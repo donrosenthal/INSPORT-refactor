@@ -1,0 +1,17 @@
+#################################
+# For OpenAI, use the following:
+#################################
+#openai
+#langchain-openai
+
+#################################
+# For Gemiini use the following:
+#################################
+google-generativeai
+langchain-google-genai
+
+langchain
+langchain-community
+langsmith
+pdfplumber
+python-dotenv==0.19.1

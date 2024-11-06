@@ -1,0 +1,15 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Insurance Portal Debug - User2",  // Changed name to be more distinct
+            "type": "python",
+            "request": "launch",
+            "program": "ui_Chatbot_prototype.py",
+            "args": ["--user", "user2"],
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

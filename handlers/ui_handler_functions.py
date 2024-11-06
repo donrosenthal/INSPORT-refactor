@@ -1,0 +1,559 @@
+import sys
+import os
+
+from persistent_data.ui_session_data_mgmt import *
+from typing import Optional, Tuple
+from server_data.ui_server_side_data import *
+
+import langchain
+
+from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate, MessagesPlaceholder
+
+langchain.debug = False # This will enable verbose logging for all LangChain components, including the langchain_google_genai library. The logs will be printed to the console, showing the details of the API requests and responses.
+
+import logging
+logging.basicConfig(filename='langchain.log', level=logging.DEBUG) # this writes the API debug log to a file.
+
+#################################
+# For OpenAI, use the following:
+#################################
+# from langchain_openai import ChatOpenAI
+
+#################################
+# For Gemini, use the following:
+#################################
+from langchain_google_genai import ChatGoogleGenerativeAI
+
+from langchain.memory import ConversationBufferMemory
+from langchain_core.runnables import RunnableWithMessageHistory
+from langchain.schema import HumanMessage, AIMessage
+
+import pdfplumber
+import logging
+import textwrap
+
+# logging.basicConfig(level= logging.DEBUG)
+
+class PDFExtractionError(Exception):
+    """Custom exception for PDF extraction errors.""" 
+    pass # These can actually be blank classes. We will pass a custom message through them if/when they are raised.
+
+class FileWriteError(Exception):
+    """Custom exception for file writing errors."""
+    pass
+
+class FileReadError(Exception):
+    """Custom exception for file reading errors."""
+    pass
+
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# This is some weird python majic that allows this file (which is in a subdirectory) to
+#  access a function in the main project directory
+
+
+############################
+# Set up all the Langchain components for 
+#       - system message
+#       - additional prompt instructions used with an insurance policy upload
+#       - additional prompt contents - the text of an insurance policy
+#       - prompt structure
+#       - model parameters
+#       - conversation memory
+#       - the Conversation Chain
+
+
+
+# Start by defining the system messaage:
+system_message = """Acting as an expert in U.S. personal insurance, please answer questions from the user in a helpful and supportive way about Life Insurance, Disability Insurance, Long Term Care Insurance, Auto Insurance, Umbrella Insurance, Pet Insurance, and Homeowners Insurance (including Condo insurance and Renters insurance). If the user asks a question about a different type of insurance, reply that you are not trained to discuss those types of insurance but would be happy to talk to them about Life Insurance, Disability Insurance, Long Term Care Insurance, Auto Insurance, Umbrella Insurance, Pet Insurance, and Homeowner's, Condo, and Renter's Insurance. If the user asks a question about a particular insurance policy, but no policy has been provided, politely invite them to select a policy from the radio buttons on the left of the screen, or upload a policy to the Insutrance Portal. If the user asks a question outside the realm of personal insurance in the United States, politely answer that you would love to help them, but are only trained to discuss issues and questions regarding personal insurance in the U.S. Users may be quite new to the domain of insurance so it is very important that you are welcoming and helpful, and that answers are complete and correct. Please err on the side of completeness rather than on the side of brevity, and always be truthful and accurate. And this is very important: please let the user know that they should always contact an insurance professional before making any important decisions."""
+
+saved_policy_instructions = """Please use the following policy document as the primary source of information for answering the user's next query.  If you cannot find that information in the policy, please clearly but state that. If you can answer the question using your general knowledge about insurance, but please clearly state that as well. Always prioritize the specific policy details over general knowledge. """
+
+policy_instructions = ""
+policy_extracted_content = ""
+
+# Set up the memory
+# ConversationBufferMemory is a Langchain class that automajically stores the conversation history as a buffer.
+# It labels which strings belong to "HumanMessage" (user) input and which belong to "AIMessage" (bot) output 
+# return_messages=True configures the memory to return the history as a list of messages, which
+# is compatible with chat models.
+
+memory = ConversationBufferMemory(return_messages=True)
+
+
+
+# Set up the language model
+
+#################################
+# For OpenAI, use the following:
+#################################
+# model = ChatOpenAI(
+#     model="gpt-4o",     # Specify the preferred model
+#     temperature=0.7,    # control the amount of randomness in replies
+#     streaming=True      # Enable Streaming
+# )
+
+#################################
+# For Gemini, use the following:
+#################################
+model = ChatGoogleGenerativeAI(
+    model="gemini-1.5-pro",
+    temperature=0.7,
+    streaming=True,
+    convert_messages_to_prompt=True 
+)
+
+#################################
+# For OpenAI, use the following:
+#################################
+# Create the prompt template
+# prompt = ChatPromptTemplate.from_messages([ # Langchain will automatically fill in the history and input
+#                                             # placeholders with the current conversation history and user
+#                                             # query, creating a complete prompt for the language model.
+#     SystemMessagePromptTemplate.from_template(system_message), # used for strings
+#     SystemMessagePromptTemplate.from_template("{policy_instructions}"),# used for strings
+#     SystemMessagePromptTemplate.from_template("{policy_content}"), # used for strings
+#     MessagesPlaceholder(variable_name="history"), # used for LISTS of strings
+#     HumanMessagePromptTemplate.from_template("{input}")# used for strings
+# ])
+
+#################################
+# For Gemini, use the following:
+#################################
+# prompt = ChatPromptTemplate.from_messages([
+#     HumanMessagePromptTemplate.from_template(
+#         "Instructions: " + system_message + "\n\n" +
+#         "{policy_instructions}\n\n" +
+#         "{policy_content}\n\n" +
+#         "User Query: {input}"
+#     ),
+#     MessagesPlaceholder(variable_name="history")
+# ])
+#
+#
+# Modified the prompt template to ensure non-empty content
+def create_formatted_prompt(x):
+    parts = ["ROLE: Helpful expert in personal insurance", "TASK: " + x["system_message"]]
+    
+    if x.get("policy_instructions"):
+        parts.append("CONTEXT: " + x["policy_instructions"])
+    
+    if x.get("policy_content"):
+        parts.append("REFERENCE DOCUMENT: " + x["policy_content"])
+    
+    parts.append("USER QUERY: " + x["input"])
+    
+    return "\n\n".join(parts)
+
+prompt = ChatPromptTemplate.from_messages([
+    HumanMessagePromptTemplate.from_template(
+        "ROLE: Expert in U.S. personal insurance\n\n"
+        "TASK: {system_message}\n\n"
+        "{context}"
+        "{reference_doc}"
+        "USER QUERY: {input}"
+    ),
+    MessagesPlaceholder(variable_name="history")
+])
+
+
+# Create the runnable chain (using the "pipe" operator as we would in Unix shells
+# Wrap the chain with message history
+# This setup does a few important things:
+# It creates a chain that formats our prompt and sends it to the model.
+# It wraps this chain with conversation history management.
+# It ensures that each time we use this chain, it will automatically:
+    # Retrieve the conversation history
+    # Add the new input to the history
+    # Format the prompt with the full history
+    # Send it to the model
+    # Save the response back to the history
+# This approach simplifies the management of conversation history and makes it easier to maintain 
+# context across multiple interactions in a chat session.
+
+# Modify the chain to handle the conditional formatting
+chain = (
+    {
+        "history": lambda x: memory.load_memory_variables({})["history"],
+        "input": lambda x: x["input"],
+        "system_message": lambda x: system_message,
+        "context": lambda x: f"CONTEXT: {x['policy_instructions']}\n\n" if x["policy_instructions"] else "",
+        "reference_doc": lambda x: f"REFERENCE DOCUMENT: {x['policy_content']}\n\n" if x["policy_content"] else "",
+    }
+    | prompt
+    | model
+)
+
+
+####################################
+# Focus Handler
+####################################
+
+def handle_focus(session_state: SessionData, 
+                 user_id: str, # would be passed to Chatbot from server
+                 session_id: str, # would be passed to Chatbot from server
+                 server_users: ServerUserDataCollection) -> None: # would be passed to Chatbot from server
+    """
+    Handle Focus.
+        session_state: is used to manage the data that the chatbot needs to "remember" for the entire session across going in and out of focus.
+        The last three function arguments represent data that would be available though the server
+
+    This function processes the focus event for the chatbot. 
+    --> WE ARE ASSUMING THAT WHEN FOCUS LANDS ON THE CHATBOT, IT IS AT THE VERY LEAST PASSED THE 
+    --> USER ID OF THE CURRENT USER. 
+    When focus is switched to the chatbot:
+        If the session is not yet initialized, (i.e., no session state object exists for this user_id), this handler creates one.
+        This will create a new SessionData object with:
+        - The initialization flag set to False
+        - The user_id set to ""
+        - The number of policies uploaded by this user set to 0
+        - The collection of policy objects for this user set to None
+        - The currently selected policy set to None
+    --> The intialization flag is then set to True
+    --> and the actual user_id is filled in
+
+    --> The rest of the handler is executed everytime it is called, whether or nor the initialization has been run.
+    --> Using the user_id, the retrieval or at last the copying of the stored data from the server is emulated. This action includes copying and storing:
+        - The number of policies uploaded by the user (which may have changed since the last time the chatbot was in focus
+            
+        - And for each policy uploaded:
+            - file_id: str  # Unique identifier for the policy file
+            - path:   str # URL or file path
+            - policy_type: str  # Type of policy (e.g., "auto", "home")
+            - print_name: str  # Display name for the policy
+            - carrier: str  # Insurance carrier name
+            - format: str  # File format (e.g., "pdf", "docx")
+            - additional_metadata: Optional[Dict] = None  # Optional dictionary for extra information 
+            - the currently chosen policy is kept at its current value ("which may be none") as the UI is not yet rendered.
+    --> Now that the session_state is up to date, the UI can be rendered.
+    --> Note that the conversation history will be kept by Langchain as it is a compoenent of the prompt template, and the UI render will need to get that data from Langchain
+    
+    Args:
+        session_state: SessionData. # The current session state, or "None"
+        The user ID
+
+    Returns:
+        None
+
+    Raises:
+    TBD
+"""
+    session_state.user_id = user_id
+    session_state.session_id = session_id
+    # the following is only executed the fist time the Chatbot receives focus or when the session is restarted by the tester
+    if session_state.get_is_initialized() == False:
+        session_state.selected_policy = "None"
+        session_state.selected_policy_index = None # ints can be initialized to None
+        session_state.is_initialized = True
+        
+    ###############################################################################################
+    # --> IN THE ACTUAL SYSTEM, THE DATA ON THE SERVER WOULD BE ACCESSIBLE VIA API OR OTHER METHOD 
+    # --> AND WOULD NOT BE PASSED AS A PARAMETER TO THIS FUNCTION                                  
+    ##############################################################################################
+ 
+
+    # The following would be executed EVERY TIME the chatbot receives focus, including the first, as this data may have changed. E.g., the user may have deleted and/or uploaded some policies since the chatbot last had focus. 
+    
+    transfer_server_data_for_current_user(session_state, server_users) 
+
+
+
+
+def transfer_server_data_for_current_user(session_state: SessionData, server_users: ServerUserDataCollection) -> None:
+
+    # First get the userID for this session's user
+    user_id = session_state.user_id
+
+    # Use user_id as a key to find data for that specific user
+    try:
+        server_user_data = server_users[user_id]
+    except KeyError:
+        print(f"User with id {user_id} not found")
+    
+    session_state.first_name = server_user_data.first_name
+    session_state.last_name = server_user_data.last_name
+
+    # Next get the info about that user's uploaded insurance policies
+    session_state.policy_list = get_policy_file_info(session_state, user_id, server_user_data)
+
+    
+
+
+
+def get_policy_file_info(session_state: SessionData, 
+                         user_id: str, 
+                         server_user: ServerUserData) -> None:
+    
+     # the set of uploaded policies may have changed since the last focus even, so reinitialize
+    policy_count = 0    # the set of uploaded policies may have changed since the last focus event
+    session_state.policy_list=[] # initialize as empty list
+    
+    for policy in server_user.policies:  # Number of policeis uploaded can be 0 
+        sesh_policy = Policy() # create a fresh Policy instance
+        sesh_policy.file_id = policy.file_id # Unique identifier for the policy file
+        sesh_policy.path = policy.path # URL or file path
+        sesh_policy.policy_type = policy.policy_type # Type of policy (e.g., "auto", "home")
+        sesh_policy.print_name = policy.print_name # Display name for the policy
+        sesh_policy.carrier = policy.carrier # Insurance carrier name
+        sesh_policy.format = policy.format # File format (e.g., "pdf", "docx", "md")
+        sesh_policy.is_extracted = policy.is_extracted
+        sesh_policy.extracted_file_path = policy.extracted_file_path
+        sesh_policy.additional_metadata = policy.addl_metadata # Optional dictionary for extra information which can either be a dict or None
+        
+        session_state.policy_list.append(sesh_policy)
+        policy_count += 1
+
+    session_state.number_policies = policy_count
+    if (policy_count > 0):
+        session_state.current_policy = "None" # for users with at least 1 policy uploaded, the "None" button is the default policy selector button
+    return(session_state.policy_list)
+
+####################################
+# Query Handler
+####################################
+
+def handle_query(user_input: str, session_state: SessionData, user_id: str) -> None:
+
+    if (session_state.number_policies == None):
+        policy = ""
+        policy_instructions = ""
+        policy_content = ""
+    else:
+        if session_state.selected_policy_index == None: # No policy has been selected
+            policy = ""
+            policy_instructions = ""    # Reset, as not required for this query
+            policy_content = ""         # Reset, as not required for this query        
+
+        else:  # A policy has been selected
+            index = session_state.selected_policy_index
+            policy = session_state.policy_list[index] # will need this to (Optionally) extract the txt from the .pdf and then (Always) add the text and the additional instructions to the prompt through the template
+
+            print(f" in handle_query, policy.is_extracted = {policy.is_extracted}") # Debug print
+             
+            if (not (policy.is_extracted)):
+                process_pdf_file(policy, session_state)
+
+            policy_content = read_from_extracted_file(policy.extracted_file_path) #python chokes on very large strings passed back to the caller,                                                             # so we force a read from the converted file even for the initial conversion to txt
+            policy_instructions = saved_policy_instructions
+
+    full_response = ""
+    buffer = ""
+
+    for chunk in chain.stream({ # only need to include non-constants
+        "input": user_input,    # user_input will always change
+        "policy_instructions": policy_instructions, # the text of policy *instructions* will not change during a session, but sometimes it may be the null string 
+        "policy_content": policy_content, # Policy content value will change every time a different policy or None is selected by the user...
+        "history": memory.load_memory_variables({})["history"]
+    }):
+        if chunk.content:
+            buffer += chunk.content
+            full_response += chunk.content
+
+            # Send chunks of ~50 characters, preserving word boundaries
+            while len(buffer) >= 50:  # Reduced from 100 to 50
+                send_chunk = buffer[:50]
+                buffer = buffer[50:]
+                send_chunk = send_chunk.replace('\n', '\\n')  # Escape newlines
+                yield send_chunk
+
+    # Send any remaining buffer
+    if buffer:
+        buffer = buffer.replace('\n', '\\n')  # Escape newlines
+        yield buffer
+           
+
+    memory.save_context({"input": user_input}, {"output": full_response})
+    yield "DONE"
+
+    
+def process_pdf_file(policy: Policy, session_state: SessionData):
+    '''Create a text file from the pdf file by: 
+            1) Converting the .pdf to a text string
+            2) Save the text in a file with the same name but with a .txt extentension
+            3) Store the path to the converted file in the session_state
+            4) Set is_extracted to True in the session_state
+
+    '''
+    file_contents = extract_text_from_pdf_file (policy)
+    txt_file_path = write_text_to_txt_file (file_contents, policy)
+    policy.extracted_file_path = txt_file_path
+    policy.is_extracted = True
+
+ 
+def extract_text_from_pdf_file(policy: Policy) -> str:
+    try:
+        text = ""
+        print("Reached extract_text_from_pdf_file") # Debug print
+        with pdfplumber.open(policy.path) as pdf:
+            for page in pdf.pages:
+                text += page.extract_text() + "\n\n"
+        return (text)
+    except Exception as e:
+        raise PDFExtractionError(f"Failed to extract text from PDF: {str(e)}")
+
+
+def write_text_to_txt_file (file_contents: str, policy: Policy) -> str:
+    print("Reached write_text_to_file") # Debug print
+    txt_file_path = create_txt_file_path(policy.path)
+    print("write path created successfully") #Debug print
+    try:
+        with open(txt_file_path, 'w', encoding='utf-8') as file:
+            file.write(file_contents)
+            return(txt_file_path)
+    except Exception as e:
+        raise FileWriteError(f"Failed to write text to file: {str(e)}")
+    
+
+def create_txt_file_path(pdf_file_path: str) -> str:
+    print("Reached create_txt_fie_path") # Debug print
+     # Split the path into the directory path, filename, and extension
+    directory, filename = os.path.split(pdf_file_path)
+    name, _ = os.path.splitext(filename)
+    
+    # Create the new filename with .txt extension
+    new_filename = name + '.txt'
+
+    # Create full path
+    # Join the directory path with the new filename
+    txt_file_path = os.path.join(directory, new_filename)
+    print(f"in create_txt_file_path, txt_file_path = {txt_file_path}") #Debug print
+    
+    return (txt_file_path)
+
+
+def read_from_extracted_file(file_path: str) -> str:
+    try:
+        with open(file_path, 'r') as file:
+            content = file.read()
+    except FileNotFoundError:
+        print("Error: The file was not found.")
+    except IOError:
+        print("Error: There was an issue reading the file.")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+    else:
+        return(content)
+    
+
+####################################
+# Policy Selection Handler
+####################################
+
+def handle_policy_selection(session_state: SessionData, user_id: str, selected_policy: str) -> None:
+    # print(f'In handle_policy_selection selected_policy is {selected_policy}' # Debug print
+    
+    if selected_policy == "None":
+        session_state.selected_policy = 'None'
+        session_state.selected_policy_index = None
+    else:
+        for index, policy in enumerate(session_state.policy_list):
+            if policy.print_name == selected_policy:
+                session_state.selected_policy = policy
+                session_state.selected_policy_index = index
+                break
+        else:
+            print(f"Warning: Selected policy '{selected_policy}' not found")
+    
+    # print(f"Policy selection updated: {selected_policy}") # Debug print
+            
+
+
+
+
+
+####################################
+# Clear Button Click Handler
+####################################
+
+# -->> To reset the conversation (i.e., not maintain conversation history across multiple calls to handle_query), you need to
+# reinitialize the chain
+
+
+
+
+def handle_clear_button_click(session_state, user_id):
+    '''The key to clearing the conversation is to clear the memory. But  we should also clear the policy instructions and the policy content. Since the chain utilizes memory to load the history of the conversation, we double-check that the chain is clear, by recreating it explicitly. This also ensures that the input and the policy instructions/contents are reset in the chain.  Finally, session state values are reinitialized by setting the selected policy to the str "None" and the selected policy's index to None.
+    '''
+    global memory, chain
+    
+    # Clear the Langchain conversation memory
+    memory.clear()
+
+    # Clear policy instructions and policy content
+    global policy_instructions, policy_extracted_content
+    policy_instructions = ""
+    policy_extracted_content = ""
+  
+    # Recreate the chain with the cleared memory and the reset values
+    # This is repeated in two places, should be recreated as a callable function
+    chain = (
+        {
+            "history": lambda x: memory.load_memory_variables({})["history"],
+            "input": lambda x: x["input"],
+            "policy_instructions": lambda x: x["policy_instructions"],
+            "policy_content": lambda x: x["policy_content"]
+        }
+        | prompt
+        | model
+    )
+    
+
+    # Reset the selected policy
+    session_state.selected_policy = "None"
+    session_state.selected_policy_index = None
+    
+    # print("Conversation history cleared and display reset.") # Debug print
+    
+
+   
+   
+
+
+####################################
+# Render the UI
+####################################
+
+def render_UI (session_state: SessionData, user_id: str) -> None:
+
+    print("\n\n\n###########################################################################")
+    print("TOP OF DISPLAY WINDOW \n")
+    print("\n     Title: Insurance Portal Chatbot \n")
+    print(f"     Greeting: Hi {session_state.first_name}! What insurance questions can I help you with? \n")
+    
+    if session_state.number_policies == 0:
+        print("No policies have been uploaded for this user so no sidebar or radio buttons are displayed")
+        print(f'For this user, current policy should ALWAYS be "None". Its current value is actually: "{session_state.selected_policy}"')
+    else:
+        if (session_state.selected_policy not in ["None", ""]): 
+            print(f"selected_policy: {session_state.selected_policy }")
+            index = session_state.selected_policy_index
+            policy = session_state.policy_list[index]                  
+
+        print ('     RB Greeting: Choose a policy to have a conversation about, or reset to "None"\n')
+        button = 1
+        print(f"Button {button}: None")
+        button += 1
+        for policy in session_state.policy_list:
+            print(f"Button {button}: {policy.print_name}")
+            button += 1
+
+    print("\n     Conversation History Scrolling Text Box:")
+    for message in memory.chat_memory.messages: # Can limit to last n exchanges with:for message in memory.e.g., chat_memory.messages [-2n]:
+        if isinstance(message, HumanMessage):
+            print(f"User: {message.content}")
+        elif isinstance(message, AIMessage):
+            print(f"IP Bot: {message.content}")
+
+    print("\n\n")
+    print("     User Query Input Text Box")
+    print("     Display contents of Query Input Box")
+    print("     This won't actually happen in the CLI simulation \n\n")
+    print("     Clear Conversation button goes here \n\n")
+    print("     Disclaimer text goes here \n \n")
+
+    print("BOTTOM OF DISPLAY WINDOW")
+    print("###########################################################################\n\n\n")
+   
+
+
+    

@@ -1,0 +1,24 @@
+{
+    "name": "INSPORT-refactor",
+    "image": "mcr.microsoft.com/vscode/devcontainers/python:3.12",
+    "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+    "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/${localWorkspaceFolderBasename},type=bind,consistency=cached",
+  
+    "customizations": {
+      "vscode": {
+        "extensions": [
+          "ms-python.python",
+          "ms-python.vscode-pylance"
+        ]
+      },
+      "settings": {
+        "terminal.integrated.shell.linux": "/bin/zsh",
+        "python.linting.enabled": true,
+        "python.formatting.provider": "black"
+      }
+   },
+    "postCreateCommand": "pip install --upgrade pip && pip install -r requirements.txt",
+    "remoteEnv": {
+      "PYTHONPATH": "${containerWorkspaceFolder}"
+  }
+  }

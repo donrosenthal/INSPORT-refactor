@@ -1,0 +1,204 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background-color: #f0f0f0;
+}
+
+.container {
+    width: 80%;
+    max-width: 1000px;
+    background-color: white;
+    border-radius: 10px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    height: 90vh;
+    opacity: 1;
+    transition: opacity 0.3s ease-in-out;
+}
+
+.container.loaded {
+    opacity: 1;
+}
+
+h1 {
+    text-align: center;
+    color: #333;
+}
+
+#greeting {
+    text-align: center;
+    margin-bottom: 20px;
+    color: #555;
+}
+
+.main-content {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+.sidebar {
+    width: 200px;
+    padding: 10px;
+    background-color: #f9f9f9;
+    border-right: 1px solid #ddd;
+    overflow-y: auto;
+}
+
+.sidebar h3 {
+    font-size: 1em;
+    margin-top: 0;
+}
+
+.sidebar div {
+    margin-bottom: 10px;
+}
+
+.chat-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 10px;
+}
+
+#conversationDisplay {
+    flex: 1;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+
+.message {
+    margin-bottom: 10px;
+    padding: 5px;
+    border-radius: 5px;
+}
+
+.user-message {
+    background-color: #e6f2ff;
+    text-align: right;
+}
+
+.bot-message {
+    background-color: #f0f0f0;
+    white-space: normal;
+    word-wrap: break-word;
+}
+
+.bot-message p {
+    margin: 0 0 10px 0;
+}
+
+.bot-message code {
+    background-color: #f4f4f4;
+    padding: 2px 4px;
+    border-radius: 4px;
+}
+
+.bot-message pre {
+    background-color: #f4f4f4;
+    padding: 10px;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin-bottom: 10px;
+}
+
+.bot-message blockquote {
+    border-left: 4px solid #ccc;
+    margin: 0 0 10px 0;
+    padding-left: 16px;
+    color: #666;
+}
+
+.bot-message h1, .bot-message h2, .bot-message h3, .bot-message h4, .bot-message h5, .bot-message h6 {
+    margin-top: 15px;
+    margin-bottom: 10px;
+}
+
+.bot-message ul, .bot-message ol {
+    padding-left: 30px;
+    margin-top: 10 px;
+    margin-bottom: 10px;
+}
+
+.bot-message li {
+    margin-bottom: 5px;
+}
+
+.bot-message ol {
+    list-style-type: decimal; /* Ensures numbered lists use numbers */
+}
+
+.bot-message ul {
+    list-style-type: disc; /* Ensures unordered lists use bullets */
+}
+
+.bot-message code {
+    background-color: #f4f4f4;
+    padding: 2px 4px;
+    border-radius: 4px;
+}
+
+.bot-message table {
+    border-collapse: collapse;
+    margin-bottom: 10px;
+    width: 100%;
+}
+
+.bot-message th, .bot-message td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+}
+
+.bot-message th {
+    background-color: #f4f4f4;
+    font-weight: bold;
+}
+
+.bot-message hr {
+    border: none;
+    border-top: 1px solid #ddd;
+    margin: 15px 0;
+}
+
+#queryInput {
+    width: 100%;
+    height: 60px;
+    margin-bottom: 10px;
+    padding: 5px;
+    resize: vertical;
+}
+
+.button-container {
+    display: flex;
+    justify-content: space-between;
+}
+
+button {
+    padding: 10px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+button:hover {
+    background-color: #0056b3;
+}
+
+#disclaimer {
+    text-align: center;
+    font-size: 0.8em;
+    color: #666;
+    margin-top: 20px;
+}
