@@ -1,5 +1,7 @@
 import sys
 import os
+import psutil
+import time
 
 from persistent_data.ui_session_data_mgmt import *
 from typing import Optional, Tuple
@@ -9,10 +11,12 @@ import langchain
 
 from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate, MessagesPlaceholder
 
-langchain.debug = False # This will enable verbose logging for all LangChain components, including the langchain_google_genai library. The logs will be printed to the console, showing the details of the API requests and responses.
+from langchain.memory import ConversationBufferMemory
 
-import logging
-logging.basicConfig(filename='langchain.log', level=logging.DEBUG) # this writes the API debug log to a file.
+from langchain.globals import set_debug
+
+#import logging
+#logging.basicConfig(filename='langchain.log', level=logging.DEBUG) # this writes the API debug log to a file.
 
 #################################
 # For OpenAI, use the following:
@@ -30,9 +34,40 @@ from langchain.schema import HumanMessage, AIMessage
 
 import pdfplumber
 import logging
+
+## Set up logging configuration
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('debug.log'),
+        logging.StreamHandler()  # This will print to console
+    ]
+)
+
+# Specifically restrict pdfminer logging to WARNING level
+# it shpuld be used sparingly, as it is a resource HOG
+logging.getLogger('pdfminer').setLevel(logging.WARNING)
+
+# Create our conversation-specific debug logger
+conversation_logger = logging.getLogger(__name__)
+
+# Configure LangChain debug logging
+set_debug(True)  
+
+# Create a separate handler for LangChain-specific logging
+langchain_logger = logging.getLogger('langchain')
+langchain_handler = logging.FileHandler('langchain_debug.log')
+langchain_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
+langchain_logger.addHandler(langchain_handler)
+
+
+def truncate_str(s: str, length: int = 100) -> str:
+    """Truncate a string to length chars and add ellipsis if truncated."""
+    return s[:length] + '...' if len(s) > length else s
+
 import textwrap
 
-# logging.basicConfig(level= logging.DEBUG)
 
 class PDFExtractionError(Exception):
     """Custom exception for PDF extraction errors.""" 
@@ -67,18 +102,15 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Start by defining the system messaage:
 system_message = """Acting as an expert in U.S. personal insurance, please answer questions from the user in a helpful and supportive way about Life Insurance, Disability Insurance, Long Term Care Insurance, Auto Insurance, Umbrella Insurance, Pet Insurance, and Homeowners Insurance (including Condo insurance and Renters insurance). If the user asks a question about a different type of insurance, reply that you are not trained to discuss those types of insurance but would be happy to talk to them about Life Insurance, Disability Insurance, Long Term Care Insurance, Auto Insurance, Umbrella Insurance, Pet Insurance, and Homeowner's, Condo, and Renter's Insurance. If the user asks a question about a particular insurance policy, but no policy has been provided, politely invite them to select a policy from the radio buttons on the left of the screen, or upload a policy to the Insutrance Portal. If the user asks a question outside the realm of personal insurance in the United States, politely answer that you would love to help them, but are only trained to discuss issues and questions regarding personal insurance in the U.S. Users may be quite new to the domain of insurance so it is very important that you are welcoming and helpful, and that answers are complete and correct. Please err on the side of completeness rather than on the side of brevity, and always be truthful and accurate. And this is very important: please let the user know that they should always contact an insurance professional before making any important decisions."""
 
-saved_policy_instructions = """Please use the following policy document as the primary source of information for answering the user's next query.  If you cannot find that information in the policy, please clearly but state that. If you can answer the question using your general knowledge about insurance, but please clearly state that as well. Always prioritize the specific policy details over general knowledge. """
+saved_policy_instructions = """Please use the following policy document as the primary source of information for answering the user's next query.  If you cannot find that information in the policy, please clearly but state that. If you can answer the question using your general knowledge about insurance, but please clearly state that as well. Always prioritize the specific policy details over general knowledge."""
 
 policy_instructions = ""
 policy_extracted_content = ""
 
 # Set up the memory
-# ConversationBufferMemory is a Langchain class that automajically stores the conversation history as a buffer.
-# It labels which strings belong to "HumanMessage" (user) input and which belong to "AIMessage" (bot) output 
-# return_messages=True configures the memory to return the history as a list of messages, which
-# is compatible with chat models.
+memory = ConversationBufferMemory(return_messages=True) #ConversationBuffer
+'''ConversationBufferMemory is a Langchain class that automajically stores the conversation history as a buffer. It labels which strings belong to "HumanMessage" (user) input and which belong to "AIMessage" (bot) output. return_messages=True configures the memory to return the history as a list of messages, which is compatible with chat models.'''
 
-memory = ConversationBufferMemory(return_messages=True)
 
 
 
@@ -99,8 +131,8 @@ memory = ConversationBufferMemory(return_messages=True)
 model = ChatGoogleGenerativeAI(
     model="gemini-1.5-pro",
     temperature=0.7,
-    streaming=True,
-    convert_messages_to_prompt=True 
+    convert_messages_to_prompt=False, # We are managing the convo history ourselves, as we do not want it to include the insurancy polcy text, and the policy instructions if/when they are present.
+    streaming=True
 )
 
 #################################
@@ -120,18 +152,38 @@ model = ChatGoogleGenerativeAI(
 #################################
 # For Gemini, use the following:
 #################################
+# Create the prompt template
+# But we need to modify how we structure the prompt and chain to keep system/policy content separate
+prompt = ChatPromptTemplate.from_messages([
+    # First message combines system content and instructions
+    ("human", "System Instructions:\n{system_template}\n\nPolicy Instructions:\n{policy_instructions}\n\nPolicy Content:\n{policy_content}"),
+    # Then include conversation history
+    MessagesPlaceholder(variable_name="history"),
+    # Finally, the current user query
+    ("human", "{input}")
+])
+
+
+# prompt = ChatPromptTemplate.from_messages([
+#     SystemMessagePromptTemplate.from_template(system_message),
+#     SystemMessagePromptTemplate.from_template("{policy_instructions}"),
+#     SystemMessagePromptTemplate.from_template("{policy_content}"),
+#     MessagesPlaceholder(variable_name="history"),
+#     HumanMessagePromptTemplate.from_template("{input}")
+# ])
+
+# constant prompt template structure
 # prompt = ChatPromptTemplate.from_messages([
 #     HumanMessagePromptTemplate.from_template(
-#         "Instructions: " + system_message + "\n\n" +
-#         "{policy_instructions}\n\n" +
-#         "{policy_content}\n\n" +
-#         "User Query: {input}"
+#         "You are an expert in U.S. personal insurance. Here is your task:\n{system_message}\n\n"
+#         "{context}"
+#         "{reference_doc}"
+#         "USER QUERY: {input}"
 #     ),
 #     MessagesPlaceholder(variable_name="history")
 # ])
-#
-#
-# Modified the prompt template to ensure non-empty content
+
+# Dynamic construction of prompt from real-time data
 def create_formatted_prompt(x):
     parts = ["ROLE: Helpful expert in personal insurance", "TASK: " + x["system_message"]]
     
@@ -145,20 +197,10 @@ def create_formatted_prompt(x):
     
     return "\n\n".join(parts)
 
-prompt = ChatPromptTemplate.from_messages([
-    HumanMessagePromptTemplate.from_template(
-        "ROLE: Expert in U.S. personal insurance\n\n"
-        "TASK: {system_message}\n\n"
-        "{context}"
-        "{reference_doc}"
-        "USER QUERY: {input}"
-    ),
-    MessagesPlaceholder(variable_name="history")
-])
 
 
-# Create the runnable chain (using the "pipe" operator as we would in Unix shells
-# Wrap the chain with message history
+
+# Create the runnable chain (using the "pipe" operator as we would in Unix shells)
 # This setup does a few important things:
 # It creates a chain that formats our prompt and sends it to the model.
 # It wraps this chain with conversation history management.
@@ -168,21 +210,53 @@ prompt = ChatPromptTemplate.from_messages([
     # Format the prompt with the full history
     # Send it to the model
     # Save the response back to the history
-# This approach simplifies the management of conversation history and makes it easier to maintain 
-# context across multiple interactions in a chat session.
+# This approach simplifies the management of conversation history and makes it easier to maintain context across multiple interactions in a chat session.
 
-# Modify the chain to handle the conditional formatting
+# Create the runnable chain
+# Modified chain to separate system prompt, policy instructions & content
 chain = (
     {
-        "history": lambda x: memory.load_memory_variables({})["history"],
+        "system_template": lambda x: system_message,  # Constant system message
+        "policy_instructions": lambda x: x["policy_instructions"],
+        "policy_content": lambda x: x["policy_content"],
         "input": lambda x: x["input"],
-        "system_message": lambda x: system_message,
-        "context": lambda x: f"CONTEXT: {x['policy_instructions']}\n\n" if x["policy_instructions"] else "",
-        "reference_doc": lambda x: f"REFERENCE DOCUMENT: {x['policy_content']}\n\n" if x["policy_content"] else "",
+        "history": lambda x: memory.load_memory_variables({})["history"]
     }
     | prompt
     | model
 )
+
+# chain = (
+#     {
+
+#         "input": lambda x: x["input"],
+#         "system_message": lambda x: system_message,
+#         "context": lambda x: f"CONTEXT: {x['policy_instructions']}\n\n" if x.get('policy_instructions') else "",
+#         "reference_doc": lambda x: f"REFERENCE DOCUMENT: {x['policy_content']}\n\n" if x.get('policy_content') else "",
+#         "history": lambda x: x["history"]  # Pass history through without modification
+#     }
+#     | prompt
+#     | model
+# )
+
+# docker resource utilities for debugging
+def get_container_resource_usage():
+    try:
+        process = psutil.Process(os.getpid())
+        cpu_percent = process.cpu_percent(interval=0.1)
+        memory_info = process.memory_info()
+        memory_mb = memory_info.rss / (1024 * 1024)  # Convert to MB
+        return f"CPU Usage: {cpu_percent}%, Memory: {memory_mb:.2f}MB"
+    except Exception as e:
+        return f"Error getting resource usage: {e}"
+
+def print_container_limits():
+    try:
+        with open('/sys/fs/cgroup/memory/memory.limit_in_bytes', 'r') as f:
+            memory_limit = int(f.read().strip()) / (1024 * 1024)  # Convert to MB
+            print(f"Container memory limit: {memory_limit:.2f}MB")
+    except Exception as e:
+        print(f"Could not read container limits: {e}")
 
 
 ####################################
@@ -308,10 +382,10 @@ def get_policy_file_info(session_state: SessionData,
         session_state.current_policy = "None" # for users with at least 1 policy uploaded, the "None" button is the default policy selector button
     return(session_state.policy_list)
 
+
 ####################################
 # Query Handler
 ####################################
-
 def handle_query(user_input: str, session_state: SessionData, user_id: str) -> None:
 
     if (session_state.number_policies == None):
@@ -327,43 +401,161 @@ def handle_query(user_input: str, session_state: SessionData, user_id: str) -> N
         else:  # A policy has been selected
             index = session_state.selected_policy_index
             policy = session_state.policy_list[index] # will need this to (Optionally) extract the txt from the .pdf and then (Always) add the text and the additional instructions to the prompt through the template
-
-            print(f" in handle_query, policy.is_extracted = {policy.is_extracted}") # Debug print
              
             if (not (policy.is_extracted)):
                 process_pdf_file(policy, session_state)
-
+                
             policy_content = read_from_extracted_file(policy.extracted_file_path) #python chokes on very large strings passed back to the caller,                                                             # so we force a read from the converted file even for the initial conversion to txt
+           
             policy_instructions = saved_policy_instructions
 
-    full_response = ""
-    buffer = ""
 
-    for chunk in chain.stream({ # only need to include non-constants
-        "input": user_input,    # user_input will always change
-        "policy_instructions": policy_instructions, # the text of policy *instructions* will not change during a session, but sometimes it may be the null string 
-        "policy_content": policy_content, # Policy content value will change every time a different policy or None is selected by the user...
-        "history": memory.load_memory_variables({})["history"]
-    }):
-        if chunk.content:
-            buffer += chunk.content
-            full_response += chunk.content
+    # Component size logging here
+    conversation_logger.debug(f"System message length: {len(system_message)}. Preview: {truncate_str(system_message)}")
+    conversation_logger.debug(f"Policy instructions length: {len(policy_instructions)}. Preview: {truncate_str(policy_instructions)}")
+    conversation_logger.debug(f"Policy content length: {len(policy_content)}. Preview: {truncate_str(policy_content)}")
+    if policy_content:
+        conversation_logger.debug(f"Policy content first 100 chars: {truncate_str(policy_content[:100])}")
+        conversation_logger.debug(f"Policy content last 100 chars: {truncate_str(policy_content[-100:])}")
+    conversation_logger.debug(f"User input length: {len(user_input)}. Preview: {truncate_str(user_input)}")
+    
+    # Before sending a query to the language model,load the current conversation history from the memory object. This ensures the model has the context of the previous interactions.
+    history = memory.load_memory_variables({})["history"]
+    if history:
+        for i, msg in enumerate(history):
+            conversation_logger.debug(f"History message {i} length: {len(str(msg.content))}. Preview: {truncate_str(str(msg.content))}")
 
-            # Send chunks of ~50 characters, preserving word boundaries
-            while len(buffer) >= 50:  # Reduced from 100 to 50
-                send_chunk = buffer[:50]
-                buffer = buffer[50:]
-                send_chunk = send_chunk.replace('\n', '\\n')  # Escape newlines
-                yield send_chunk
 
-    # Send any remaining buffer
-    if buffer:
-        buffer = buffer.replace('\n', '\\n')  # Escape newlines
-        yield buffer
-           
+# Add first debug logging HERE, right before the streaming loop
+    conversation_logger.debug("\n=== Debug: Conversation History BEFORE streaming ===")
+    conversation_logger.debug(f"History type: {type(history)}")
+    conversation_logger.debug(f"History length: {len(history) if history else 'None'}")
+    conversation_logger.debug(f"Policy instructions present: {'policy_instructions' in locals() and policy_instructions != ''}")
+    conversation_logger.debug(f"Policy content present: {'policy_content' in locals() and policy_content != ''}")
+    
 
-    memory.save_context({"input": user_input}, {"output": full_response})
+
+    buffer_chunks = []  # Use list instead of string concatenation, IMPORTANT! Strings cause very long lag
+    full_response_chunks = []  # Use list instead of string concatenation, IMPORTANT! Strings cause very long lag
+
+    try:
+        for chunk in chain.stream({
+            "input": user_input,
+            "policy_instructions": policy_instructions,
+            "policy_content": policy_content,
+            "history": memory.load_memory_variables({})["history"]
+        }):
+            conversation_logger.debug(f"Received chunk: {truncate_str(str(chunk), 200)}")
+
+            # # For the full response:
+            # conversation_logger.debug(f"Full response length: {len(full_response)}")
+            # conversation_logger.debug(f"Full response preview: {truncate_str(full_response)}")
+
+            # Enhanced content extraction
+            content = None
+            if hasattr(chunk, 'content'):
+                content = chunk.content
+            elif hasattr(chunk, 'message') and hasattr(chunk.message, 'content'):
+                content = chunk.message.content
+            
+            if content:
+                conversation_logger.debug(f"Extracted content: {truncate_str(content)}")
+                buffer_chunks.append(content)
+                full_response_chunks.append(content)
+
+                # Join buffer chunks only when we need to check/send
+                buffer = ''.join(buffer_chunks)
+                while len(buffer) >= 50:
+                    send_chunk = buffer[:50]
+                    buffer = buffer[50:]
+                    buffer_chunks = [buffer]  # Reset buffer_chunks with remaining content
+                    send_chunk = send_chunk.replace('\n', '\\n')
+                    yield send_chunk
+
+        # Handle any remaining buffer content
+        if buffer_chunks:
+            final_buffer = ''.join(buffer_chunks)
+            if final_buffer:
+                final_buffer = final_buffer.replace('\n', '\\n')
+                yield final_buffer
+
+        # Join full response chunks only once at the end
+        full_response = ''.join(full_response_chunks)
+
+        # Save the user's message and the AI's response to conversation memory
+        memory.save_context({"input": user_input}, {"output": full_response}) 
+
+        # Log the full response:
+        # conversation_logger.debug(f"Full response length: {len(full_response)}")
+        # conversation_logger.debug(f"Full response preview: {truncate_str(full_response)}")
+
+        if not full_response:
+            conversation_logger.warning("Empty response received from model")
+            full_response = "I apologize, but I encountered an error processing your request. Could you please rephrase your question?"
+
+        memory.save_context({"input": user_input}, {"output": full_response})
+
+        # Detailed log AFTER saving context
+        conversation_logger.debug("\n=== Debug: Conversation History AFTER save_context ===")
+        conversation_logger.debug(f"History type: {type(history)}")
+        conversation_logger.debug(f"History length: {len(history) if history else 'None'}")
+        
+        # Concise logging
+        history = memory.load_memory_variables({})["history"]
+        conversation_logger.debug("\n=== Conversation History After Save ===")
+        conversation_logger.debug(f"Total messages in history: {len(history)}")
+        for i, msg in enumerate(history[-2:]):  # Only shows last exchange
+            msg_content = str(msg.content) if hasattr(msg, 'content') else 'No content'
+            conversation_logger.debug(f"Message {i} ({msg.type}): {truncate_str(msg_content)}")
+        conversation_logger.info(f"Completed processing query: {truncate_str(user_input)}")
+        ##############################################
+        # More detailed logging, if needed or desired
+        ##############################################
+        # if history:
+        #     for i, msg in enumerate(history):
+        #         conversation_logger.debug(f"\nMessage {i}:")
+        #         conversation_logger.debug(f"Type: {type(msg)}")
+        #         conversation_logger.debug(f"Content type: {msg.type if hasattr(msg, 'type') else 'No type attribute'}")
+        #         conversation_logger.debug(f"Content preview: {truncate_str(msg.content if hasattr(msg, 'content') else 'No content attribute')}")
+        #         conversation_logger.debug("---")
+        
+    except Exception as e:
+        conversation_logger.error(f"Error in chat stream: {str(e)}", exc_info=True)
+        yield "I apologize, but I encountered an error. Please try again."
+
     yield "DONE"
+
+# Add this function to help debug history
+def format_history_for_gemini(history):
+    """Format conversation history in a way Gemini prefers"""
+    formatted_messages = []
+    for msg in history:
+        if isinstance(msg, HumanMessage):
+            formatted_messages.append(f"Human: {msg.content}")
+        elif isinstance(msg, AIMessage):
+            formatted_messages.append(f"Assistant: {msg.content}")
+    return "\n".join(formatted_messages)
+
+    # Add this diagnostic helper
+def log_conversation_state(history, logger):
+    """Debug helper to log conversation state"""
+    logger.debug("\n=== Conversation State Analysis ===")
+    logger.debug(f"Number of messages: {len(history)}")
+    total_tokens = 0
+    
+    for i, msg in enumerate(history):
+        msg_content = str(msg.content) if hasattr(msg, 'content') else 'No content'
+        msg_length = len(msg_content)
+        logger.debug(f"\nMessage {i}:")
+        logger.debug(f"Type: {type(msg)}")
+        logger.debug(f"Message type: {msg.type if hasattr(msg, 'type') else 'unknown'}")
+        logger.debug(f"Length: {msg_length}")
+        logger.debug(f"Preview: {truncate_str(msg_content)}")
+        total_tokens += msg_length
+
+    logger.debug(f"\nTotal approximate token length: {total_tokens}")
+    logger.debug("===================================")
+
 
     
 def process_pdf_file(policy: Policy, session_state: SessionData):
@@ -374,28 +566,56 @@ def process_pdf_file(policy: Policy, session_state: SessionData):
             4) Set is_extracted to True in the session_state
 
     '''
+  
     file_contents = extract_text_from_pdf_file (policy)
+ 
     txt_file_path = write_text_to_txt_file (file_contents, policy)
+ 
     policy.extracted_file_path = txt_file_path
     policy.is_extracted = True
+   
 
  
 def extract_text_from_pdf_file(policy: Policy) -> str:
     try:
-        text = ""
-        print("Reached extract_text_from_pdf_file") # Debug print
+        # print("\n=== Container Resource Information ===")
+        # print_container_limits()  # Add this here to check limits before starting
+        # print(f"Initial resource usage - {get_container_resource_usage()}")
+        # print("=====================================\n")
+        
+        text_parts = []
+
         with pdfplumber.open(policy.path) as pdf:
-            for page in pdf.pages:
-                text += page.extract_text() + "\n\n"
-        return (text)
+            total_pages = len(pdf.pages)
+
+            for i, page in enumerate(pdf.pages):
+                # print(f"\n=== Page {i+1}/{total_pages} Resource Check ===")
+                # print_container_limits()
+                # start_time = time.time()
+    
+                
+                extracted_text = page.extract_text()
+                # end_time = time.time()
+                #print(f"Page {i+1}/{total_pages} took {end_time - start_time:.2f} seconds") # Debug print
+
+                if extracted_text:  # Guard against None or empty strings
+                    text_parts.append(extracted_text)
+            
+        
+        # print("\n=== Final Container Resource Information ===")
+        # print_container_limits()
+        # print(f"Final resource usage - {get_container_resource_usage()}")
+        # print("=========================================\n")
+         
+        return "\n\n".join(text_parts)
     except Exception as e:
         raise PDFExtractionError(f"Failed to extract text from PDF: {str(e)}")
 
 
 def write_text_to_txt_file (file_contents: str, policy: Policy) -> str:
-    print("Reached write_text_to_file") # Debug print
+    
     txt_file_path = create_txt_file_path(policy.path)
-    print("write path created successfully") #Debug print
+
     try:
         with open(txt_file_path, 'w', encoding='utf-8') as file:
             file.write(file_contents)
@@ -405,7 +625,7 @@ def write_text_to_txt_file (file_contents: str, policy: Policy) -> str:
     
 
 def create_txt_file_path(pdf_file_path: str) -> str:
-    print("Reached create_txt_fie_path") # Debug print
+
      # Split the path into the directory path, filename, and extension
     directory, filename = os.path.split(pdf_file_path)
     name, _ = os.path.splitext(filename)
@@ -416,15 +636,18 @@ def create_txt_file_path(pdf_file_path: str) -> str:
     # Create full path
     # Join the directory path with the new filename
     txt_file_path = os.path.join(directory, new_filename)
-    print(f"in create_txt_file_path, txt_file_path = {txt_file_path}") #Debug print
+    
     
     return (txt_file_path)
 
 
 def read_from_extracted_file(file_path: str) -> str:
+
     try:
         with open(file_path, 'r') as file:
             content = file.read()
+
+        
     except FileNotFoundError:
         print("Error: The file was not found.")
     except IOError:

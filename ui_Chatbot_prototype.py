@@ -9,8 +9,17 @@ from dotenv import load_dotenv
 import os
 
 load_dotenv()
+###############
+# For GPT* USE:
+###############
+# openai_api_key = os.getenv('OPENAI_API_KEY')
 
-openai_api_key = os.getenv('OPENAI_API_KEY')
+###################
+# For GEMINI* USE:
+###################
+google_api_key = os.getenv('GOOGLE_API_KEY')
+
+
 langchain_api_key = os.getenv('LANGCHAIN_API_KEY')
 
 from persistent_data.ui_session_data_mgmt import SessionData
@@ -154,6 +163,8 @@ class MyHandler(http.server.SimpleHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    print("  PUNCH LIST:  \n * API Quota upgrade \n * Content caching of policies \n https://claude.ai/chat/8aa21b65-b846-4da8-bcb1-ec9f09da6c22 \n * Fix bug in empty query being sent to Gemini after second query")
+    throwaway = input("\n hit any key to continue")
     PORT = 8000
 
     server_user_data = create_server_user_data() 
