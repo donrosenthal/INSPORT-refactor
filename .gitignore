@@ -1,6 +1,6 @@
 rate_limi_and_quota_tests/
 langchain_debug_log
-.vscode # debug script
+.vscode/ # debug script directory
 
 
 # Byte-compiled / optimized / DLL files
