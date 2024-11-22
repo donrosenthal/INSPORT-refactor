@@ -1,7 +1,6 @@
 rate_limi_and_quota_tests/
 langchain_debug_log
-.vscode/ # debug script directory
-
+.vscode/ # IDE specific setups
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

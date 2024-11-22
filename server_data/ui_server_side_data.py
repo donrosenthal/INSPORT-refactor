@@ -97,9 +97,7 @@ def create_server_user_data() -> ServerUserDataCollection:
     '''
     This function sets up all the data stored on the simulated "server" for users and their uploaded insurance policies. It does not represent the accessing of the user data by the Chatbot, it is the creation of the repository of data stored on the server which the chatbot will be able to access.
     '''
-    users = ServerUserDataCollection()  # This will hold all of the data for the set of mocked-up users on the server
-                                        # During simulation or testing, the tester will be able to choose 
-                                        # one of the users for a simulated session.
+    users = ServerUserDataCollection()  # This will hold all of the data for the set of mocked-up users on the server. During simulation or testing, the tester will be able to choose one of the users for a simulated session.
     build_users(users)
     return(users)
 
@@ -128,8 +126,7 @@ def build_users(users: ServerUserDataCollection) -> None:
                               addl_metadata = None  # Optional dictionary for extra information which can also be None
                             )
 
-    pfcollection1 = ServerPolicyCollection()            # This will collect all the ServerPolicyFiles for
-                                                        # all of the policies "uploaded" by user1
+    pfcollection1 = ServerPolicyCollection()            # This will collect all the ServerPolicyFiles for all of the policies "uploaded" by user1
     pfcollection1.policies[pfile1.file_id] = pfile1     
 
     user1 = ServerUserData("user1",
@@ -163,8 +160,7 @@ def build_users(users: ServerUserDataCollection) -> None:
                               addl_metadata = None  # Optional dictionary for extra information which can also be None
                             )
 
-    pfcollection2 = ServerPolicyCollection()            # This will collect all the ServerPolicyFiles for
-                                                        # all of the policies "uploaded" by user1
+    pfcollection2 = ServerPolicyCollection()            # This will collect all the ServerPolicyFiles for all of the policies "uploaded" by user1
     pfcollection2.policies[pfile1.file_id] = pfile1
     pfcollection2.policies[pfile2.file_id] = pfile2   
 

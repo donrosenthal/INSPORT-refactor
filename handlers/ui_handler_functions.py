@@ -15,8 +15,6 @@ from langchain.memory import ConversationBufferMemory
 
 from langchain.globals import set_debug
 
-#import logging
-#logging.basicConfig(filename='langchain.log', level=logging.DEBUG) # this writes the API debug log to a file.
 
 #################################
 # For OpenAI, use the following:
@@ -35,33 +33,33 @@ from langchain.schema import HumanMessage, AIMessage
 import pdfplumber
 import logging
 
-## Set up logging configuration
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('debug.log', mode='w'),
-        logging.StreamHandler()  # This will print to console
-    ]
-)
+# Set up logging configuration - uncomment when needed
+# logging.basicConfig(
+#     level=logging.INFO,
+#     format='%(asctime)s - %(levelname)s - %(message)s',
+#     handlers=[
+#         logging.FileHandler('debug.log', mode='w'),
+#         logging.StreamHandler()  # This will print to console
+#     ]
+# )
+# # Loggers for specific components - uncomment when needed
+# # Specifically restrict pdfminer logging to WARNING level
+# # it shpuld be used sparingly, as it is a resource HOG
+# logging.getLogger('pdfminer').setLevel(logging.WARNING)
+# logging.getLogger('langchain').setLevel(logging.WARNING)  # Suppress most LangChain logs
+# logging.getLogger('urllib3').setLevel(logging.WARNING)   # Suppress HTTP request logs
+# logging.getLogger('google').setLevel(logging.WARNING)    # If using Google/Gemini
 
-# Specifically restrict pdfminer logging to WARNING level
-# it shpuld be used sparingly, as it is a resource HOG
-logging.getLogger('pdfminer').setLevel(logging.WARNING)
-logging.getLogger('langchain').setLevel(logging.WARNING)  # Suppress most LangChain logs
-logging.getLogger('urllib3').setLevel(logging.WARNING)   # Suppress HTTP request logs
-logging.getLogger('google').setLevel(logging.WARNING)    # If using Google/Gemini
-
-# Create our conversation-specific debug logger
-conversation_logger = logging.getLogger(__name__)
-conversation_logger.setLevel(logging.DEBUG)
+# # Create our conversation-specific debug logger
+# conversation_logger = logging.getLogger(__name__)
+# conversation_logger.setLevel(logging.DEBUG)
 
 
-# Create a separate handler for LangChain-specific logging
-langchain_logger = logging.getLogger('langchain')
-langchain_handler = logging.FileHandler('langchain_debug.log')
-langchain_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
-langchain_logger.addHandler(langchain_handler)
+# # Create a separate handler for LangChain-specific logging
+# langchain_logger = logging.getLogger('langchain')
+# langchain_handler = logging.FileHandler('langchain_debug.log')
+# langchain_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
+# langchain_logger.addHandler(langchain_handler)
 
 # Configure LangChain debug logging
 set_debug(False)  
@@ -365,73 +363,30 @@ def get_policy_file_info(session_state: SessionData,
 # Query Handler
 ####################################
 def handle_query(user_input: str, session_state: SessionData, user_id: str) -> None:
-    conversation_logger.debug("\n=== Starting Query Processing ===")
-    conversation_logger.debug(f"User input: {user_input}")
-    
-    # Load and log initial memory state
-    initial_history = memory.load_memory_variables({})["history"]
-    conversation_logger.debug("\n=== Initial Memory State ===")
-    conversation_logger.debug(f"History length: {len(initial_history) if initial_history else 0}")
-    if initial_history:
-        for i, msg in enumerate(initial_history):
-            conversation_logger.debug(f"Message {i} ({type(msg)}): {truncate_str(str(msg.content))}")
-
 
     policy = ""
     policy_instructions = ""
     policy_content = ""
 
-    # First check if there are any policies uploaded
-    if session_state.number_policies is None or session_state.number_policies == 0:
-        # No policies uploaded, keep empty strings
-        conversation_logger.debug("No policies uploaded - using empty policy content and instructions")
-    else:
-        # There are policies, but check if one is selected
-        if session_state.selected_policy_index is None or session_state.selected_policy == "None":
-            # No policy selected, keep empty strings
-            conversation_logger.debug("No policy selected - using empty policy content and instructions")
-        else:  
-            # A policy has been selected
-            index = session_state.selected_policy_index
-            policy = session_state.policy_list[index] # will need this to (Optionally) extract the txt from the .pdf and then (Always) add the text and the additional instructions to the prompt through the template
-            conversation_logger.debug(f"Processing selected policy: {policy.print_name}")
-             
-            if (not (policy.is_extracted)):
-                process_pdf_file(policy, session_state)
-                
-            policy_content = read_from_extracted_file(policy.extracted_file_path) # python chokes on very large strings passed back to the caller, so we force a read from the converted file even for the initial conversion to txt
-            policy_instructions = saved_policy_instructions
-            conversation_logger.debug(f"Policy selected and processed: {policy.print_name}")
-           
+    # First check if there are any policies uploaded or selected
+    if (session_state.number_policies is not None and 
+        session_state.number_policies > 0 and 
+        session_state.selected_policy_index is not None and 
+        session_state.selected_policy != "None"):
+        # A policy has been selected
+        index = session_state.selected_policy_index
+        policy = session_state.policy_list[index] # will need this to (Optionally) extract the txt from the .pdf and then (Always) add the text and the additional instructions to the prompt through the template
 
-    # Debug logging
-    conversation_logger.debug(f"Processing query: {truncate_str(user_input)}")
+            
+        if (not (policy.is_extracted)):
+            process_pdf_file(policy, session_state)
+            
+        policy_content = read_from_extracted_file(policy.extracted_file_path) # python chokes on very large strings passed back to the caller, so we force a read from the converted file even for the initial conversion to txt
+        policy_instructions = saved_policy_instructions
+
+    
     
     history = memory.load_memory_variables({})["history"]
-
-    # # Component size logging here
-    # conversation_logger.debug(f"System message length: {len(system_message)}. Preview: {truncate_str(system_message)}")
-    # conversation_logger.debug(f"Policy instructions length: {len(policy_instructions)}. Preview: {truncate_str(policy_instructions)}")
-    # conversation_logger.debug(f"Policy content length: {len(policy_content)}. Preview: {truncate_str(policy_content)}")
-    # if policy_content:
-    #     conversation_logger.debug(f"Policy content first 100 chars: {truncate_str(policy_content[:100])}")
-    #     conversation_logger.debug(f"Policy content last 100 chars: {truncate_str(policy_content[-100:])}")
-    # conversation_logger.debug(f"User input length: {len(user_input)}. Preview: {truncate_str(user_input)}")
-    
-    # Before sending a query to the language model,load the current conversation history from the memory object. This ensures the model has the context of the previous interactions.
-    # history = memory.load_memory_variables({})["history"]
-    # if history:
-    #     for i, msg in enumerate(history):
-    #         conversation_logger.debug(f"History message {i} length: {len(str(msg.content))}. Preview: {truncate_str(str(msg.content))}")
-
-
-# Add first debug logging HERE, right before the streaming loop
-    conversation_logger.debug("\n=== Debug: Conversation History BEFORE streaming ===")
-    conversation_logger.debug(f"History type: {type(history)}")
-    conversation_logger.debug(f"History length: {len(history) if history else 'None'}")
-    conversation_logger.debug(f"Policy instructions present: {'policy_instructions' in locals() and policy_instructions != ''}")
-    conversation_logger.debug(f"Policy content present: {'policy_content' in locals() and policy_content != ''}")
-    
 
 
     buffer_chunks = []  # Use list instead of string concatenation, IMPORTANT! Strings cause very long lag
@@ -444,11 +399,6 @@ def handle_query(user_input: str, session_state: SessionData, user_id: str) -> N
             "policy_content": policy_content,
             "history": memory.load_memory_variables({})["history"]
         }):
-            conversation_logger.debug(f"Received chunk: {truncate_str(str(chunk), 200)}")
-
-            # # For the full response:
-            # conversation_logger.debug(f"Full response length: {len(full_response)}")
-            # conversation_logger.debug(f"Full response preview: {truncate_str(full_response)}")
 
             # Enhanced content extraction
             content = None
@@ -480,38 +430,12 @@ def handle_query(user_input: str, session_state: SessionData, user_id: str) -> N
         # Join full response chunks only once at the end
         full_response = ''.join(full_response_chunks)
 
-        # Log the full response:
-        # conversation_logger.debug(f"Full response length: {len(full_response)}")
-        # conversation_logger.debug(f"Full response preview: {truncate_str(full_response)}")
-
         if not full_response:
-            conversation_logger.warning("Empty response received from model")
+
             full_response = "I apologize, but I encountered an error processing your request. Could you please rephrase your question?"
 
         memory.save_context({"input": user_input}, {"output": full_response})
 
-        # Detailed log AFTER saving context
-        conversation_logger.debug("\n=== Debug: Conversation History AFTER save_context ===")
-        conversation_logger.debug(f"History type: {type(history)}")
-        conversation_logger.debug(f"History length: {len(history) if history else 'None'}")
-        
-        # Concise logging
-        conversation_logger.debug("\n=== Conversation History After Save ===")
-        conversation_logger.debug(f"Total messages in history: {len(history)}")
-        for i, msg in enumerate(history[-2:]):  # Only shows last exchange
-            msg_content = str(msg.content) if hasattr(msg, 'content') else 'No content'
-            conversation_logger.debug(f"Message {i} ({msg.type}): {truncate_str(msg_content)}")
-        conversation_logger.info(f"Completed processing query: {truncate_str(user_input)}")
-        ##############################################
-        # More detailed logging, if needed or desired
-        ##############################################
-        # if history:
-        #     for i, msg in enumerate(history):
-        #         conversation_logger.debug(f"\nMessage {i}:")
-        #         conversation_logger.debug(f"Type: {type(msg)}")
-        #         conversation_logger.debug(f"Content type: {msg.type if hasattr(msg, 'type') else 'No type attribute'}")
-        #         conversation_logger.debug(f"Content preview: {truncate_str(msg.content if hasattr(msg, 'content') else 'No content attribute')}")
-        #         conversation_logger.debug("---")
         
     except Exception as e:
         conversation_logger.error(f"Error in chat stream: {str(e)}", exc_info=True)
@@ -522,28 +446,19 @@ def handle_query(user_input: str, session_state: SessionData, user_id: str) -> N
 
 def format_history_for_gemini(history):
     """Format conversation history while maintaining message objects"""
-    
-    conversation_logger.debug("\n=== Formatting History for Gemini ===")
-    conversation_logger.debug(f"Input history length: {len(history) if history else 0}")
+
 
     seen_messages = set()  # Track unique messages
     formatted_messages = []
     
     for i, msg in enumerate(history):
         content = str(msg.content)
-        conversation_logger.debug(f"Processing message {i}:")
-        conversation_logger.debug(f"Type: {type(msg)}")
-        conversation_logger.debug(f"Content: {truncate_str(content)}")
 
         # Only add message if we haven't seen it before
         if content not in seen_messages:
             formatted_messages.append(msg)  # Keep the original message object
             seen_messages.add(content)
-            conversation_logger.debug(f"Added message {i} to formatted messages")
-        else:
-            conversation_logger.debug(f"Skipped duplicate message {i}")
-    
-    conversation_logger.debug(f"Output formatted messages length: {len(formatted_messages)}")
+
     return formatted_messages  # Return list of message objects, not strings
 
 
@@ -600,23 +515,16 @@ def extract_text_from_pdf_file(policy: Policy) -> str:
             total_pages = len(pdf.pages)
 
             for i, page in enumerate(pdf.pages):
-                # print(f"\n=== Page {i+1}/{total_pages} Resource Check ===")
-                # print_container_limits()
-                # start_time = time.time()
+                
     
                 
                 extracted_text = page.extract_text()
-                # end_time = time.time()
-                #print(f"Page {i+1}/{total_pages} took {end_time - start_time:.2f} seconds") # Debug print
+                
 
                 if extracted_text:  # Guard against None or empty strings
                     text_parts.append(extracted_text)
             
-        
-        # print("\n=== Final Container Resource Information ===")
-        # print_container_limits()
-        # print(f"Final resource usage - {get_container_resource_usage()}")
-        # print("=========================================\n")
+    
          
         return "\n\n".join(text_parts)
     except Exception as e:
@@ -674,7 +582,7 @@ def read_from_extracted_file(file_path: str) -> str:
 ####################################
 
 def handle_policy_selection(session_state: SessionData, user_id: str, selected_policy: str) -> None:
-    # print(f'In handle_policy_selection selected_policy is {selected_policy}' # Debug print
+   
     
     if selected_policy == "None":
         session_state.selected_policy = 'None'
@@ -688,7 +596,7 @@ def handle_policy_selection(session_state: SessionData, user_id: str, selected_p
         else:
             print(f"Warning: Selected policy '{selected_policy}' not found")
     
-    # print(f"Policy selection updated: {selected_policy}") # Debug print
+
             
 
 
@@ -704,20 +612,20 @@ def handle_clear_button_click(session_state, user_id):
     '''
     global memory, chain, policy_instructions, policy_extracted_content
     
-    conversation_logger.debug("\n=== Clearing Conversation ===")
+
     
     global memory, chain, policy_instructions, policy_extracted_content
     
     # Log memory state before clearing
     initial_history = memory.load_memory_variables({})["history"]
-    conversation_logger.debug(f"History length before clear: {len(initial_history) if initial_history else 0}")
+
     
     # Clear the Langchain conversation memory
     memory.clear()
 
     # Verify memory is cleared
     cleared_history = memory.load_memory_variables({})["history"]
-    conversation_logger.debug(f"History length after clear: {len(cleared_history) if cleared_history else 0}")
+
     
 
     # Clear policy instructions and policy content
@@ -726,13 +634,13 @@ def handle_clear_button_click(session_state, user_id):
   
     # Recreate chain to ensure completely fresh state
     chain = create_chain()
-    conversation_logger.debug("Chain recreated with fresh state")
+
     
     # Reset the selected policy
     session_state.selected_policy = "None"
     session_state.selected_policy_index = None
 
-    conversation_logger.debug("Conversation clearing completed")
+
     
 #######################
 # Debugging utilities

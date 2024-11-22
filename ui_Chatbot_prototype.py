@@ -28,9 +28,6 @@ from server_data.ui_server_side_data import create_server_user_data, ServerUserD
 
 global session_state
 
-
-# print("server starting...") # Debug print
-
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description='Start the Insurance Portal Chat Demo')
 parser.add_argument('--user', type=str, required=True, help='Simulated user to load (user0, user1, or user2)')
@@ -44,12 +41,14 @@ if args.user not in valid_users:
 
 # If we get here, the user is valid
 
-
 class MyHandler(http.server.SimpleHTTPRequestHandler):
+
+    def log_message(self, format, *args):
+        # Override to suppress logging
+        pass
+
     def do_GET(self):
-        # print(f"Received GET request for path: {self.path}") # Debug print
         if self.path == '/' or self.path == '//':
-            # print("Serving home.html") # Debug print
             self.path = '/home.html'  # Redirect root to home.html
             try:
                 return http.server.SimpleHTTPRequestHandler.do_GET(self)
@@ -90,7 +89,6 @@ class MyHandler(http.server.SimpleHTTPRequestHandler):
         elif self.path.startswith('/api/select_policy'):
             query_params = parse_qs(urlparse(self.path).query)
             policy = query_params.get('policy', [''])[0]
-            # print(f"Received policy selection: '{policy}'")  # Debug print
             if policy:
                 try:
                     handle_policy_selection(session_state, session_state.user_id, policy)
@@ -132,9 +130,7 @@ class MyHandler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(response.encode())
 
         elif self.path == '/api/handle_focus':
-            # print("Handling focus") # Debug print
             handle_focus(session_state, session_state.user_id, session_state.session_id, server_user_data)
-            # print(f"After handle_focus, selected policy: {session_state. selected_policy}") # Debug print
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
@@ -175,16 +171,13 @@ if __name__ == "__main__":
  
     #   Create an instance of the session_state object with default values
     session_state = SessionData()       
-    # session_state will hold all the session  data for the simulated user session 
-    # A simple set of python data structures is used to define the data that needs to be maintained
-    # A single SessionData instance holds all the data required for a full session with a single user aincluding thir currently upoaded policies, if any.
+    # A single SessionData instance holds all the data required for a full session with a single user including their currently upoaded policies, if any.
 
     user_id = args.user #passed in as a command line argument
     session_id = "sesh123ABC"  # Would be accessed from the server by TBD method   
     handle_focus(session_state, user_id, session_id, server_user_data)
 
     with socketserver.TCPServer(("", PORT), MyHandler) as httpd:
-        # print(f"Server started at http://localhost:{PORT}") # Debug print
         httpd.serve_forever()
 
 
