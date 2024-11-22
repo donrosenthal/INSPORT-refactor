@@ -163,7 +163,7 @@ class MyHandler(http.server.SimpleHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    print("  PUNCH LIST:  \n * API Quota upgrade \n * Content caching of policies \n https://claude.ai/chat/8aa21b65-b846-4da8-bcb1-ec9f09da6c22 \n * Fix bug in empty query being sent to Gemini after second query")
+    print("  PUNCH LIST: \n * Content caching of policies \n")
     throwaway = input("\n hit any key to continue")
     PORT = 8000
 

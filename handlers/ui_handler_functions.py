@@ -37,10 +37,10 @@ import logging
 
 ## Set up logging configuration
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('debug.log'),
+        logging.FileHandler('debug.log', mode='w'),
         logging.StreamHandler()  # This will print to console
     ]
 )
@@ -48,18 +48,23 @@ logging.basicConfig(
 # Specifically restrict pdfminer logging to WARNING level
 # it shpuld be used sparingly, as it is a resource HOG
 logging.getLogger('pdfminer').setLevel(logging.WARNING)
+logging.getLogger('langchain').setLevel(logging.WARNING)  # Suppress most LangChain logs
+logging.getLogger('urllib3').setLevel(logging.WARNING)   # Suppress HTTP request logs
+logging.getLogger('google').setLevel(logging.WARNING)    # If using Google/Gemini
 
 # Create our conversation-specific debug logger
 conversation_logger = logging.getLogger(__name__)
+conversation_logger.setLevel(logging.DEBUG)
 
-# Configure LangChain debug logging
-set_debug(True)  
 
 # Create a separate handler for LangChain-specific logging
 langchain_logger = logging.getLogger('langchain')
 langchain_handler = logging.FileHandler('langchain_debug.log')
 langchain_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
 langchain_logger.addHandler(langchain_handler)
+
+# Configure LangChain debug logging
+set_debug(False)  
 
 
 def truncate_str(s: str, length: int = 100) -> str:
@@ -100,7 +105,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 # Start by defining the system messaage:
-system_message = """Acting as an expert in U.S. personal insurance, please answer questions from the user in a helpful and supportive way about Life Insurance, Disability Insurance, Long Term Care Insurance, Auto Insurance, Umbrella Insurance, Pet Insurance, and Homeowners Insurance (including Condo insurance and Renters insurance). If the user asks a question about a different type of insurance, reply that you are not trained to discuss those types of insurance but would be happy to talk to them about Life Insurance, Disability Insurance, Long Term Care Insurance, Auto Insurance, Umbrella Insurance, Pet Insurance, and Homeowner's, Condo, and Renter's Insurance. If the user asks a question about a particular insurance policy, but no policy has been provided, politely invite them to select a policy from the radio buttons on the left of the screen, or upload a policy to the Insutrance Portal. If the user asks a question outside the realm of personal insurance in the United States, politely answer that you would love to help them, but are only trained to discuss issues and questions regarding personal insurance in the U.S. Users may be quite new to the domain of insurance so it is very important that you are welcoming and helpful, and that answers are complete and correct. Please err on the side of completeness rather than on the side of brevity, and always be truthful and accurate. And this is very important: please let the user know that they should always contact an insurance professional before making any important decisions."""
+system_message = """Acting as an expert in U.S. personal insurance, please answer questions from the user in a helpful and supportive way about Life Insurance, Disability Insurance, Long Term Care Insurance, Auto Insurance, Umbrella Insurance, Pet Insurance, and Homeowners Insurance (including Condo insurance and Renters insurance), or about their previous questions in the current conversation. If the user asks a question about a different type of insurance, reply that you are not trained to discuss those types of insurance but would be happy to talk to them about Life Insurance, Disability Insurance, Long Term Care Insurance, Auto Insurance, Umbrella Insurance, Pet Insurance, and Homeowner's, Condo, and Renter's Insurance. If the user asks a question about a particular insurance policy, but no policy has been provided, politely invite them to select a policy from the radio buttons on the left of the screen, or upload a policy to the Insutrance Portal. If the user asks a question outside the realm of personal insurance in the United States (unless it is a question about this conversation) politely answer that you would love to help them, but are only trained to discuss issues and questions regarding personal insurance in the U.S. Users may be quite new to the domain of insurance so it is very important that you are welcoming and helpful, and that answers are complete and correct. Please err on the side of completeness rather than on the side of brevity, and always be truthful and accurate. And this is very important: please let the user know that they should always contact an insurance professional before making any important decisions."""
 
 saved_policy_instructions = """Please use the following policy document as the primary source of information for answering the user's next query.  If you cannot find that information in the policy, please clearly but state that. If you can answer the question using your general knowledge about insurance, but please clearly state that as well. Always prioritize the specific policy details over general knowledge."""
 
@@ -214,49 +219,22 @@ def create_formatted_prompt(x):
 
 # Create the runnable chain
 # Modified chain to separate system prompt, policy instructions & content
-chain = (
-    {
-        "system_template": lambda x: system_message,  # Constant system message
-        "policy_instructions": lambda x: x["policy_instructions"],
-        "policy_content": lambda x: x["policy_content"],
-        "input": lambda x: x["input"],
-        "history": lambda x: memory.load_memory_variables({})["history"]
-    }
-    | prompt
-    | model
-)
+def create_chain():
+    """Create a new chain with current global settings."""
+    return (
+        {
+            "system_template": lambda x: system_message,  # Constant system message
+            "policy_instructions": lambda x: x["policy_instructions"],
+            "policy_content": lambda x: x["policy_content"],
+            "input": lambda x: x["input"],
+            "history": lambda x: format_history_for_gemini(memory.load_memory_variables({})["history"])
+        }
+        | prompt
+        | model
+    )
 
-# chain = (
-#     {
-
-#         "input": lambda x: x["input"],
-#         "system_message": lambda x: system_message,
-#         "context": lambda x: f"CONTEXT: {x['policy_instructions']}\n\n" if x.get('policy_instructions') else "",
-#         "reference_doc": lambda x: f"REFERENCE DOCUMENT: {x['policy_content']}\n\n" if x.get('policy_content') else "",
-#         "history": lambda x: x["history"]  # Pass history through without modification
-#     }
-#     | prompt
-#     | model
-# )
-
-# docker resource utilities for debugging
-def get_container_resource_usage():
-    try:
-        process = psutil.Process(os.getpid())
-        cpu_percent = process.cpu_percent(interval=0.1)
-        memory_info = process.memory_info()
-        memory_mb = memory_info.rss / (1024 * 1024)  # Convert to MB
-        return f"CPU Usage: {cpu_percent}%, Memory: {memory_mb:.2f}MB"
-    except Exception as e:
-        return f"Error getting resource usage: {e}"
-
-def print_container_limits():
-    try:
-        with open('/sys/fs/cgroup/memory/memory.limit_in_bytes', 'r') as f:
-            memory_limit = int(f.read().strip()) / (1024 * 1024)  # Convert to MB
-            print(f"Container memory limit: {memory_limit:.2f}MB")
-    except Exception as e:
-        print(f"Could not read container limits: {e}")
+# Initial chain creation
+chain = create_chain()
 
 
 ####################################
@@ -387,43 +365,64 @@ def get_policy_file_info(session_state: SessionData,
 # Query Handler
 ####################################
 def handle_query(user_input: str, session_state: SessionData, user_id: str) -> None:
+    conversation_logger.debug("\n=== Starting Query Processing ===")
+    conversation_logger.debug(f"User input: {user_input}")
+    
+    # Load and log initial memory state
+    initial_history = memory.load_memory_variables({})["history"]
+    conversation_logger.debug("\n=== Initial Memory State ===")
+    conversation_logger.debug(f"History length: {len(initial_history) if initial_history else 0}")
+    if initial_history:
+        for i, msg in enumerate(initial_history):
+            conversation_logger.debug(f"Message {i} ({type(msg)}): {truncate_str(str(msg.content))}")
 
-    if (session_state.number_policies == None):
-        policy = ""
-        policy_instructions = ""
-        policy_content = ""
+
+    policy = ""
+    policy_instructions = ""
+    policy_content = ""
+
+    # First check if there are any policies uploaded
+    if session_state.number_policies is None or session_state.number_policies == 0:
+        # No policies uploaded, keep empty strings
+        conversation_logger.debug("No policies uploaded - using empty policy content and instructions")
     else:
-        if session_state.selected_policy_index == None: # No policy has been selected
-            policy = ""
-            policy_instructions = ""    # Reset, as not required for this query
-            policy_content = ""         # Reset, as not required for this query        
-
-        else:  # A policy has been selected
+        # There are policies, but check if one is selected
+        if session_state.selected_policy_index is None or session_state.selected_policy == "None":
+            # No policy selected, keep empty strings
+            conversation_logger.debug("No policy selected - using empty policy content and instructions")
+        else:  
+            # A policy has been selected
             index = session_state.selected_policy_index
             policy = session_state.policy_list[index] # will need this to (Optionally) extract the txt from the .pdf and then (Always) add the text and the additional instructions to the prompt through the template
+            conversation_logger.debug(f"Processing selected policy: {policy.print_name}")
              
             if (not (policy.is_extracted)):
                 process_pdf_file(policy, session_state)
                 
-            policy_content = read_from_extracted_file(policy.extracted_file_path) #python chokes on very large strings passed back to the caller,                                                             # so we force a read from the converted file even for the initial conversion to txt
-           
+            policy_content = read_from_extracted_file(policy.extracted_file_path) # python chokes on very large strings passed back to the caller, so we force a read from the converted file even for the initial conversion to txt
             policy_instructions = saved_policy_instructions
+            conversation_logger.debug(f"Policy selected and processed: {policy.print_name}")
+           
 
+    # Debug logging
+    conversation_logger.debug(f"Processing query: {truncate_str(user_input)}")
+    
+    history = memory.load_memory_variables({})["history"]
 
-    # Component size logging here
-    conversation_logger.debug(f"System message length: {len(system_message)}. Preview: {truncate_str(system_message)}")
-    conversation_logger.debug(f"Policy instructions length: {len(policy_instructions)}. Preview: {truncate_str(policy_instructions)}")
-    conversation_logger.debug(f"Policy content length: {len(policy_content)}. Preview: {truncate_str(policy_content)}")
-    if policy_content:
-        conversation_logger.debug(f"Policy content first 100 chars: {truncate_str(policy_content[:100])}")
-        conversation_logger.debug(f"Policy content last 100 chars: {truncate_str(policy_content[-100:])}")
-    conversation_logger.debug(f"User input length: {len(user_input)}. Preview: {truncate_str(user_input)}")
+    # # Component size logging here
+    # conversation_logger.debug(f"System message length: {len(system_message)}. Preview: {truncate_str(system_message)}")
+    # conversation_logger.debug(f"Policy instructions length: {len(policy_instructions)}. Preview: {truncate_str(policy_instructions)}")
+    # conversation_logger.debug(f"Policy content length: {len(policy_content)}. Preview: {truncate_str(policy_content)}")
+    # if policy_content:
+    #     conversation_logger.debug(f"Policy content first 100 chars: {truncate_str(policy_content[:100])}")
+    #     conversation_logger.debug(f"Policy content last 100 chars: {truncate_str(policy_content[-100:])}")
+    # conversation_logger.debug(f"User input length: {len(user_input)}. Preview: {truncate_str(user_input)}")
     
     # Before sending a query to the language model,load the current conversation history from the memory object. This ensures the model has the context of the previous interactions.
-    history = memory.load_memory_variables({})["history"]
-    if history:
-        for i, msg in enumerate(history):
-            conversation_logger.debug(f"History message {i} length: {len(str(msg.content))}. Preview: {truncate_str(str(msg.content))}")
+    # history = memory.load_memory_variables({})["history"]
+    # if history:
+    #     for i, msg in enumerate(history):
+    #         conversation_logger.debug(f"History message {i} length: {len(str(msg.content))}. Preview: {truncate_str(str(msg.content))}")
 
 
 # Add first debug logging HERE, right before the streaming loop
@@ -459,7 +458,6 @@ def handle_query(user_input: str, session_state: SessionData, user_id: str) -> N
                 content = chunk.message.content
             
             if content:
-                conversation_logger.debug(f"Extracted content: {truncate_str(content)}")
                 buffer_chunks.append(content)
                 full_response_chunks.append(content)
 
@@ -482,9 +480,6 @@ def handle_query(user_input: str, session_state: SessionData, user_id: str) -> N
         # Join full response chunks only once at the end
         full_response = ''.join(full_response_chunks)
 
-        # Save the user's message and the AI's response to conversation memory
-        memory.save_context({"input": user_input}, {"output": full_response}) 
-
         # Log the full response:
         # conversation_logger.debug(f"Full response length: {len(full_response)}")
         # conversation_logger.debug(f"Full response preview: {truncate_str(full_response)}")
@@ -501,7 +496,6 @@ def handle_query(user_input: str, session_state: SessionData, user_id: str) -> N
         conversation_logger.debug(f"History length: {len(history) if history else 'None'}")
         
         # Concise logging
-        history = memory.load_memory_variables({})["history"]
         conversation_logger.debug("\n=== Conversation History After Save ===")
         conversation_logger.debug(f"Total messages in history: {len(history)}")
         for i, msg in enumerate(history[-2:]):  # Only shows last exchange
@@ -525,16 +519,33 @@ def handle_query(user_input: str, session_state: SessionData, user_id: str) -> N
 
     yield "DONE"
 
-# Add this function to help debug history
+
 def format_history_for_gemini(history):
-    """Format conversation history in a way Gemini prefers"""
+    """Format conversation history while maintaining message objects"""
+    
+    conversation_logger.debug("\n=== Formatting History for Gemini ===")
+    conversation_logger.debug(f"Input history length: {len(history) if history else 0}")
+
+    seen_messages = set()  # Track unique messages
     formatted_messages = []
-    for msg in history:
-        if isinstance(msg, HumanMessage):
-            formatted_messages.append(f"Human: {msg.content}")
-        elif isinstance(msg, AIMessage):
-            formatted_messages.append(f"Assistant: {msg.content}")
-    return "\n".join(formatted_messages)
+    
+    for i, msg in enumerate(history):
+        content = str(msg.content)
+        conversation_logger.debug(f"Processing message {i}:")
+        conversation_logger.debug(f"Type: {type(msg)}")
+        conversation_logger.debug(f"Content: {truncate_str(content)}")
+
+        # Only add message if we haven't seen it before
+        if content not in seen_messages:
+            formatted_messages.append(msg)  # Keep the original message object
+            seen_messages.add(content)
+            conversation_logger.debug(f"Added message {i} to formatted messages")
+        else:
+            conversation_logger.debug(f"Skipped duplicate message {i}")
+    
+    conversation_logger.debug(f"Output formatted messages length: {len(formatted_messages)}")
+    return formatted_messages  # Return list of message objects, not strings
+
 
     # Add this diagnostic helper
 def log_conversation_state(history, logger):
@@ -688,95 +699,61 @@ def handle_policy_selection(session_state: SessionData, user_id: str, selected_p
 # Clear Button Click Handler
 ####################################
 
-# -->> To reset the conversation (i.e., not maintain conversation history across multiple calls to handle_query), you need to
-# reinitialize the chain
-
-
-
-
 def handle_clear_button_click(session_state, user_id):
-    '''The key to clearing the conversation is to clear the memory. But  we should also clear the policy instructions and the policy content. Since the chain utilizes memory to load the history of the conversation, we double-check that the chain is clear, by recreating it explicitly. This also ensures that the input and the policy instructions/contents are reset in the chain.  Finally, session state values are reinitialized by setting the selected policy to the str "None" and the selected policy's index to None.
+    '''Clear the conversation by resetting memory, policy data, and chain state.The key to clearing the conversation is to clear the memory. But  we should also clear the policy instructions and the policy content. We recreate the chain itself to insure that all values, including history and input are reset. Finally, session state values are reinitialized by setting the selected policy to the str "None" and the selected policy's index to None.
     '''
-    global memory, chain
+    global memory, chain, policy_instructions, policy_extracted_content
+    
+    conversation_logger.debug("\n=== Clearing Conversation ===")
+    
+    global memory, chain, policy_instructions, policy_extracted_content
+    
+    # Log memory state before clearing
+    initial_history = memory.load_memory_variables({})["history"]
+    conversation_logger.debug(f"History length before clear: {len(initial_history) if initial_history else 0}")
     
     # Clear the Langchain conversation memory
     memory.clear()
 
+    # Verify memory is cleared
+    cleared_history = memory.load_memory_variables({})["history"]
+    conversation_logger.debug(f"History length after clear: {len(cleared_history) if cleared_history else 0}")
+    
+
     # Clear policy instructions and policy content
-    global policy_instructions, policy_extracted_content
     policy_instructions = ""
     policy_extracted_content = ""
   
-    # Recreate the chain with the cleared memory and the reset values
-    # This is repeated in two places, should be recreated as a callable function
-    chain = (
-        {
-            "history": lambda x: memory.load_memory_variables({})["history"],
-            "input": lambda x: x["input"],
-            "policy_instructions": lambda x: x["policy_instructions"],
-            "policy_content": lambda x: x["policy_content"]
-        }
-        | prompt
-        | model
-    )
+    # Recreate chain to ensure completely fresh state
+    chain = create_chain()
+    conversation_logger.debug("Chain recreated with fresh state")
     
-
     # Reset the selected policy
     session_state.selected_policy = "None"
     session_state.selected_policy_index = None
+
+    conversation_logger.debug("Conversation clearing completed")
     
-    # print("Conversation history cleared and display reset.") # Debug print
-    
+#######################
+# Debugging utilities
+#######################
 
-   
-   
+# docker resource utilities for debugging
+def get_container_resource_usage():
+    try:
+        process = psutil.Process(os.getpid())
+        cpu_percent = process.cpu_percent(interval=0.1)
+        memory_info = process.memory_info()
+        memory_mb = memory_info.rss / (1024 * 1024)  # Convert to MB
+        return f"CPU Usage: {cpu_percent}%, Memory: {memory_mb:.2f}MB"
+    except Exception as e:
+        return f"Error getting resource usage: {e}"
 
+def print_container_limits():
+    try:
+        with open('/sys/fs/cgroup/memory/memory.limit_in_bytes', 'r') as f:
+            memory_limit = int(f.read().strip()) / (1024 * 1024)  # Convert to MB
+            print(f"Container memory limit: {memory_limit:.2f}MB")
+    except Exception as e:
+        print(f"Could not read container limits: {e}")
 
-####################################
-# Render the UI
-####################################
-
-def render_UI (session_state: SessionData, user_id: str) -> None:
-
-    print("\n\n\n###########################################################################")
-    print("TOP OF DISPLAY WINDOW \n")
-    print("\n     Title: Insurance Portal Chatbot \n")
-    print(f"     Greeting: Hi {session_state.first_name}! What insurance questions can I help you with? \n")
-    
-    if session_state.number_policies == 0:
-        print("No policies have been uploaded for this user so no sidebar or radio buttons are displayed")
-        print(f'For this user, current policy should ALWAYS be "None". Its current value is actually: "{session_state.selected_policy}"')
-    else:
-        if (session_state.selected_policy not in ["None", ""]): 
-            print(f"selected_policy: {session_state.selected_policy }")
-            index = session_state.selected_policy_index
-            policy = session_state.policy_list[index]                  
-
-        print ('     RB Greeting: Choose a policy to have a conversation about, or reset to "None"\n')
-        button = 1
-        print(f"Button {button}: None")
-        button += 1
-        for policy in session_state.policy_list:
-            print(f"Button {button}: {policy.print_name}")
-            button += 1
-
-    print("\n     Conversation History Scrolling Text Box:")
-    for message in memory.chat_memory.messages: # Can limit to last n exchanges with:for message in memory.e.g., chat_memory.messages [-2n]:
-        if isinstance(message, HumanMessage):
-            print(f"User: {message.content}")
-        elif isinstance(message, AIMessage):
-            print(f"IP Bot: {message.content}")
-
-    print("\n\n")
-    print("     User Query Input Text Box")
-    print("     Display contents of Query Input Box")
-    print("     This won't actually happen in the CLI simulation \n\n")
-    print("     Clear Conversation button goes here \n\n")
-    print("     Disclaimer text goes here \n \n")
-
-    print("BOTTOM OF DISPLAY WINDOW")
-    print("###########################################################################\n\n\n")
-   
-
-
-    
