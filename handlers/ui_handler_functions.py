@@ -167,41 +167,6 @@ prompt = ChatPromptTemplate.from_messages([
 ])
 
 
-# prompt = ChatPromptTemplate.from_messages([
-#     SystemMessagePromptTemplate.from_template(system_message),
-#     SystemMessagePromptTemplate.from_template("{policy_instructions}"),
-#     SystemMessagePromptTemplate.from_template("{policy_content}"),
-#     MessagesPlaceholder(variable_name="history"),
-#     HumanMessagePromptTemplate.from_template("{input}")
-# ])
-
-# constant prompt template structure
-# prompt = ChatPromptTemplate.from_messages([
-#     HumanMessagePromptTemplate.from_template(
-#         "You are an expert in U.S. personal insurance. Here is your task:\n{system_message}\n\n"
-#         "{context}"
-#         "{reference_doc}"
-#         "USER QUERY: {input}"
-#     ),
-#     MessagesPlaceholder(variable_name="history")
-# ])
-
-# Dynamic construction of prompt from real-time data
-def create_formatted_prompt(x):
-    parts = ["ROLE: Helpful expert in personal insurance", "TASK: " + x["system_message"]]
-    
-    if x.get("policy_instructions"):
-        parts.append("CONTEXT: " + x["policy_instructions"])
-    
-    if x.get("policy_content"):
-        parts.append("REFERENCE DOCUMENT: " + x["policy_content"])
-    
-    parts.append("USER QUERY: " + x["input"])
-    
-    return "\n\n".join(parts)
-
-
-
 
 # Create the runnable chain (using the "pipe" operator as we would in Unix shells)
 # This setup does a few important things:
