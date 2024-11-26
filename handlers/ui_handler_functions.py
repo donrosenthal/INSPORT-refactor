@@ -329,35 +329,27 @@ def get_policy_file_info(session_state: SessionData,
 ####################################
 def handle_query(user_input: str, session_state: SessionData, user_id: str) -> None:
 
-    policy = ""
     policy_instructions = ""
     policy_content = ""
 
     # First check if there are any policies uploaded or selected
-    if (session_state.number_policies is not None and 
-        session_state.number_policies > 0 and 
-        session_state.selected_policy_index is not None and 
-        session_state.selected_policy != "None"):
-        # A policy has been selected
+    if(policy_is_selected(session_state)):
         index = session_state.selected_policy_index
-        policy = session_state.policy_list[index] # will need this to (Optionally) extract the txt from the .pdf and then (Always) add the text and the additional instructions to the prompt through the template
+        policy = session_state.policy_list[index] 
 
-            
         if (not (policy.is_extracted)):
             process_pdf_file(policy, session_state)
             
-        policy_content = read_from_extracted_file(policy.extracted_file_path) # python chokes on very large strings passed back to the caller, so we force a read from the converted file even for the initial conversion to txt
+        policy_content = read_from_extracted_file(policy.extracted_file_path) 
         policy_instructions = saved_policy_instructions
-
-    
     
     history = memory.load_memory_variables({})["history"]
-
 
     buffer_chunks = []  # Use list instead of string concatenation, IMPORTANT! Strings cause very long lag
     full_response_chunks = []  # Use list instead of string concatenation, IMPORTANT! Strings cause very long lag
 
     try:
+        # Streaming chunks of the response
         for chunk in chain.stream({
             "input": user_input,
             "policy_instructions": policy_instructions,
@@ -365,18 +357,15 @@ def handle_query(user_input: str, session_state: SessionData, user_id: str) -> N
             "history": memory.load_memory_variables({})["history"]
         }):
 
-            # Enhanced content extraction
-            content = None
-            if hasattr(chunk, 'content'):
-                content = chunk.content
-            elif hasattr(chunk, 'message') and hasattr(chunk.message, 'content'):
-                content = chunk.message.content
+            
+            # This line is used to extract the content of the chunk, which could either be directly an attribute of chunk itself (chunk.content), or it could be nested within another attribute (chunk.message.content). The goal is to safely access these fields without throwing an error if they don't exist.
+            content = getattr(chunk, 'content', None) or getattr(chunk.message, 'content', None)
             
             if content:
                 buffer_chunks.append(content)
                 full_response_chunks.append(content)
 
-                # Join buffer chunks only when we need to check/send
+                # Send buffer in chunks of 50 characters
                 buffer = ''.join(buffer_chunks)
                 while len(buffer) >= 50:
                     send_chunk = buffer[:50]
@@ -387,17 +376,14 @@ def handle_query(user_input: str, session_state: SessionData, user_id: str) -> N
 
         # Handle any remaining buffer content
         if buffer_chunks:
-            final_buffer = ''.join(buffer_chunks)
-            if final_buffer:
-                final_buffer = final_buffer.replace('\n', '\\n')
-                yield final_buffer
+            final_buffer = ''.join(buffer_chunks).replace('\n', '\\n')
+            yield final_buffer
 
         # Join full response chunks only once at the end
         full_response = ''.join(full_response_chunks)
 
         if not full_response:
-
-            full_response = "I apologize, but I encountered an error processing your request. Could you please rephrase your question?"
+            full_response = "I apologize, but I encountered an error processing your request. CPlease try again?"
 
         memory.save_context({"input": user_input}, {"output": full_response})
 
@@ -408,45 +394,26 @@ def handle_query(user_input: str, session_state: SessionData, user_id: str) -> N
 
     yield "DONE"
 
+def policy_is_selected(session_state: SessionData) -> bool:
+    return (session_state.number_policies is not None and 
+            session_state.number_policies > 0 and 
+            session_state.selected_policy_index is not None and 
+            session_state.selected_policy != "None")
+        
 
 def format_history_for_gemini(history):
     """Format conversation history while maintaining message objects"""
-
-
     seen_messages = set()  # Track unique messages
     formatted_messages = []
     
     for i, msg in enumerate(history):
         content = str(msg.content)
-
         # Only add message if we haven't seen it before
         if content not in seen_messages:
             formatted_messages.append(msg)  # Keep the original message object
             seen_messages.add(content)
 
     return formatted_messages  # Return list of message objects, not strings
-
-
-    # Add this diagnostic helper
-def log_conversation_state(history, logger):
-    """Debug helper to log conversation state"""
-    logger.debug("\n=== Conversation State Analysis ===")
-    logger.debug(f"Number of messages: {len(history)}")
-    total_tokens = 0
-    
-    for i, msg in enumerate(history):
-        msg_content = str(msg.content) if hasattr(msg, 'content') else 'No content'
-        msg_length = len(msg_content)
-        logger.debug(f"\nMessage {i}:")
-        logger.debug(f"Type: {type(msg)}")
-        logger.debug(f"Message type: {msg.type if hasattr(msg, 'type') else 'unknown'}")
-        logger.debug(f"Length: {msg_length}")
-        logger.debug(f"Preview: {truncate_str(msg_content)}")
-        total_tokens += msg_length
-
-    logger.debug(f"\nTotal approximate token length: {total_tokens}")
-    logger.debug("===================================")
-
 
     
 def process_pdf_file(policy: Policy, session_state: SessionData):
@@ -457,89 +424,58 @@ def process_pdf_file(policy: Policy, session_state: SessionData):
             4) Set is_extracted to True in the session_state
 
     '''
-  
     file_contents = extract_text_from_pdf_file (policy)
- 
     txt_file_path = write_text_to_txt_file (file_contents, policy)
- 
     policy.extracted_file_path = txt_file_path
     policy.is_extracted = True
    
-
  
 def extract_text_from_pdf_file(policy: Policy) -> str:
     try:
-        # print("\n=== Container Resource Information ===")
-        # print_container_limits()  # Add this here to check limits before starting
-        # print(f"Initial resource usage - {get_container_resource_usage()}")
-        # print("=====================================\n")
-        
         text_parts = []
-
         with pdfplumber.open(policy.path) as pdf:
             total_pages = len(pdf.pages)
-
-            for i, page in enumerate(pdf.pages):
-                
-    
-                
+            for page in pdf.pages:
                 extracted_text = page.extract_text()
-                
-
                 if extracted_text:  # Guard against None or empty strings
                     text_parts.append(extracted_text)
-            
-    
-         
         return "\n\n".join(text_parts)
     except Exception as e:
         raise PDFExtractionError(f"Failed to extract text from PDF: {str(e)}")
 
 
 def write_text_to_txt_file (file_contents: str, policy: Policy) -> str:
-    
     txt_file_path = create_txt_file_path(policy.path)
-
     try:
         with open(txt_file_path, 'w', encoding='utf-8') as file:
             file.write(file_contents)
-            return(txt_file_path)
+        return(txt_file_path)
     except Exception as e:
         raise FileWriteError(f"Failed to write text to file: {str(e)}")
     
 
 def create_txt_file_path(pdf_file_path: str) -> str:
-
      # Split the path into the directory path, filename, and extension
     directory, filename = os.path.split(pdf_file_path)
     name, _ = os.path.splitext(filename)
-    
     # Create the new filename with .txt extension
     new_filename = name + '.txt'
-
     # Create full path
     # Join the directory path with the new filename
     txt_file_path = os.path.join(directory, new_filename)
-    
-    
     return (txt_file_path)
 
 
 def read_from_extracted_file(file_path: str) -> str:
-
     try:
-        with open(file_path, 'r') as file:
-            content = file.read()
-
-        
+        with open(file_path, 'r', encoding='utf-8') as file:
+            return file.read()
     except FileNotFoundError:
-        print("Error: The file was not found.")
+        raise FileNotFoundError("Error: The file was not found.")
     except IOError:
-        print("Error: There was an issue reading the file.")
+        raise IOError("Error: There was an issue reading the file.")
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-    else:
-        return(content)
+        raise Exception(f"An unexpected error occurred: {e}")
     
 
 ####################################

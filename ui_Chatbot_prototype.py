@@ -161,6 +161,7 @@ class MyHandler(http.server.SimpleHTTPRequestHandler):
 if __name__ == "__main__":
     print("  PUNCH LIST: \n * Content caching of policies \n")
     throwaway = input("\n hit any key to continue")
+    print("head over to the chatbot...")
     PORT = 8000
 
     server_user_data = create_server_user_data() 
