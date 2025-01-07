@@ -16,3 +16,6 @@ langsmith
 pdfplumber
 python-dotenv==0.19.1
 psutil
+
+grpcio
+google--generativeai

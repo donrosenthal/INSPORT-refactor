@@ -117,8 +117,8 @@ def build_users(users: ServerUserDataCollection) -> None:
     # user1
     pfile1 = ServerPolicyFile(file_id = "ZMpolicy1", 
                               path = '/workspaces/Demo_V2_UI/PDF_speriments/LincolnPol1.pdf', # PATHS ARE HARDCODED FOR THE PROTOTYPE!!!
-                              policy_type = 'Permanent Life', 
-                              print_name = 'Lincoln Life (Permanent)', 
+                              policy_type = 'Term Life', 
+                              print_name = 'Lincoln Life (Term)', 
                               carrier = 'Lincoln National Life Insurance Company',
                               format = 'pdf',
                               is_extracted = True,
@@ -141,8 +141,8 @@ def build_users(users: ServerUserDataCollection) -> None:
 # user2
     pfile1 = ServerPolicyFile(file_id = "JSpolicy1", 
                               path = '/workspaces/INSPORT-refactor/PDF_speriments/LincolnPol1.pdf', # PATHS ARE HARDCODED FOR THE PROTOTYPE!!!
-                              policy_type = 'Permanent Life', 
-                              print_name = 'Lincoln Life 1 (Permanent)', 
+                              policy_type = 'Term Life', 
+                              print_name = 'Lincoln Life 1 (Term)', 
                               carrier = 'Lincoln National Life Insurance Company',
                               format = 'pdf',
                               is_extracted = True,
@@ -151,8 +151,8 @@ def build_users(users: ServerUserDataCollection) -> None:
                             )
     pfile2 = ServerPolicyFile(file_id = "JSpolicy2", 
                               path = '/workspaces/INSPORT-refactor/PDF_speriments/LincolnPol2.pdf', 
-                              policy_type = 'Permanent Life', 
-                              print_name = 'Lincoln Life 2 (Permanent)', 
+                              policy_type = 'Term Life', 
+                              print_name = 'Lincoln Life 2 (Term)', 
                               carrier = 'Lincoln National Life Insurance Company',
                               format = 'pdf',
                               is_extracted = False,
@@ -173,4 +173,63 @@ def build_users(users: ServerUserDataCollection) -> None:
                             pfcollection2 
                           )
     users.add_users(user2)
+
+
+# user4
+    pfile1 = ServerPolicyFile(file_id = "BFpolicy1", 
+                              path = '/workspaces/INSPORT-refactor/PDF_speriments/LincolnPol1.pdf', # PATHS ARE HARDCODED FOR THE PROTOTYPE!!!
+                              policy_type = 'Term Life', 
+                              print_name = 'Lincoln Life 1 (Term)', 
+                              carrier = 'Lincoln National Life Insurance Company',
+                              format = 'pdf',
+                              is_extracted = False,
+                              extracted_file_path = '', # PATHS ARE HARDCODED FOR THE PROTOTYPE!!!
+                              addl_metadata = None  # Optional dictionary for extra information which can also be None
+                            )
+    pfile2 = ServerPolicyFile(file_id = "BFpolicy2", 
+                              path = '/workspaces/INSPORT-refactor/PDF_speriments/LincolnPol2.pdf', 
+                              policy_type = 'Term Life', 
+                              print_name = 'Lincoln Life 2 (Term)', 
+                              carrier = 'Lincoln National Life Insurance Company',
+                              format = 'pdf',
+                              is_extracted = False,
+                              extracted_file_path = '',
+                              addl_metadata = None  # Optional dictionary for extra information which can also be None
+                            )
+    pfile3 = ServerPolicyFile(file_id = "BFpolicy3", 
+                                path = '/workspaces/INSPORT-refactor/PDF_speriments/Home_Owners_Policy_1.pdf', 
+                                policy_type = 'Condo Owner', 
+                                print_name = 'Safeco Condo Owner', 
+                                carrier = 'Safeco',
+                                format = 'pdf',
+                                is_extracted = False,
+                                extracted_file_path = '',
+                                addl_metadata = None  # Optional dictionary for extra information which can also be None
+                                )
+    pfile4 = ServerPolicyFile(file_id = "BFpolicy4", 
+                                path = '/workspaces/INSPORT-refactor/PDF_speriments/Renters_Policy_Nationwide.pdf', 
+                                policy_type = 'Renter', 
+                                print_name = 'Nationwide Renter', 
+                                carrier = 'Nationwide',
+                                format = 'pdf',
+                                is_extracted = False,
+                                extracted_file_path = '',
+                                addl_metadata = None  # Optional dictionary for extra information which can also be None
+                                )
+
+    pfcollection4 = ServerPolicyCollection()            # This will collect all the ServerPolicyFiles for all of the policies "uploaded" by user1
+    pfcollection4.policies[pfile1.file_id] = pfile1
+    pfcollection4.policies[pfile2.file_id] = pfile2  
+    pfcollection4.policies[pfile3.file_id] = pfile3
+    pfcollection4.policies[pfile4.file_id] = pfile4   
+
+
+    user4 = ServerUserData("user4",
+                            "session4",
+                            "Beff", 
+                            "Jesos",
+                            4, 
+                            pfcollection4 
+                          )
+    users.add_users(user4)
 
