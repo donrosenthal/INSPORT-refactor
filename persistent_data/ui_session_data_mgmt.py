@@ -1,6 +1,8 @@
 from dataclasses import dataclass # decorator that automatically adds special methods like __init__() and __repr__() to the class.
 from typing import List, Optional, Dict # Optional is used for type hinting to indicate that a value might be of a certain type or None.
 
+from pathlib import Path
+
 
 # Singleton class to manage the overall session state
 ### ----->>>>> VERSION AS OF 7/24/2024 IS NOT THREAD SAFE
@@ -86,7 +88,7 @@ class Policy:
         self.additional_metadata = {}
 
     def to_dict(self):
-        return {
+        result  = {
             "file_id": self.file_id,
             "path": self.path,
             "policy_type": self.policy_type,
@@ -98,6 +100,13 @@ class Policy:
             "additional_metadata": self.additional_metadata
         }
 
+        # Convert any Path objects to strings
+        for key, value in result.items():
+            if isinstance(value, Path):
+                result[key] = str(value)
+        
+
+        return(result)
         
 
 # Class to manage all policies for a single user

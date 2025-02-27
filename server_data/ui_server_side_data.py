@@ -1,3 +1,15 @@
+import sys
+import os
+
+# Get the absolute path of the project root directory
+root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Add the root directory to Python's path
+sys.path.append(root_dir)
+
+# Now we can import from config.py in the root
+from config import get_policy_file_path # this enables relative directory paths for cloned repos
+
 from typing import Optional, Dict, Iterator, List
 from dataclasses import dataclass, field, fields # decorator that automatically adds special methods like __init__() and __repr__() to the class.
 
@@ -26,7 +38,7 @@ from dataclasses import dataclass, field, fields # decorator that automatically 
 @dataclass
 class ServerPolicyFile:
     file_id: str = "" # Unique identifier for the policy file
-    path:   str = "" # URL or file path
+    path:   str = "" # File path
     policy_type: str = ""  # Type of policy (e.g., "auto", "home")
     print_name: str = ""  # Display name for the policy
     carrier: str = ""  # Insurance carrier name
@@ -116,13 +128,13 @@ def build_users(users: ServerUserDataCollection) -> None:
     
     # user1
     pfile1 = ServerPolicyFile(file_id = "ZMpolicy1", 
-                              path = '/workspaces/Demo_V2_UI/PDF_speriments/LincolnPol1.pdf', # PATHS ARE HARDCODED FOR THE PROTOTYPE!!!
+                              path = get_policy_file_path('LincolnPol1.pdf'),
                               policy_type = 'Term Life', 
                               print_name = 'Lincoln Life (Term)', 
                               carrier = 'Lincoln National Life Insurance Company',
                               format = 'pdf',
                               is_extracted = True,
-                              extracted_file_path = '/workspaces/INSPORT-refactor/PDF_speriments/LincolnPol1_extracted.txt', # PATHS ARE HARDCODED FOR THE PROTOTYPE!!!
+                              extracted_file_path =  get_policy_file_path('LincolnPol1_extracted.txt'), 
                               addl_metadata = None  # Optional dictionary for extra information which can also be None
                             )
 
@@ -140,17 +152,17 @@ def build_users(users: ServerUserDataCollection) -> None:
 
 # user2
     pfile1 = ServerPolicyFile(file_id = "JSpolicy1", 
-                              path = '/workspaces/INSPORT-refactor/PDF_speriments/LincolnPol1.pdf', # PATHS ARE HARDCODED FOR THE PROTOTYPE!!!
+                              path = get_policy_file_path('LincolnPol1.pdf'),
                               policy_type = 'Term Life', 
                               print_name = 'Lincoln Life 1 (Term)', 
                               carrier = 'Lincoln National Life Insurance Company',
                               format = 'pdf',
                               is_extracted = True,
-                              extracted_file_path = '/workspaces/Demo_V2_UI/PDF_speriments/LincolnPol1_extracted.txt', # PATHS ARE HARDCODED FOR THE PROTOTYPE!!!
+                              extracted_file_path =  get_policy_file_path('LincolnPol1_extracted.txt'), 
                               addl_metadata = None  # Optional dictionary for extra information which can also be None
                             )
     pfile2 = ServerPolicyFile(file_id = "JSpolicy2", 
-                              path = '/workspaces/INSPORT-refactor/PDF_speriments/LincolnPol2.pdf', 
+                              path =  get_policy_file_path('LincolnPol2.pdf'), 
                               policy_type = 'Term Life', 
                               print_name = 'Lincoln Life 2 (Term)', 
                               carrier = 'Lincoln National Life Insurance Company',
@@ -175,19 +187,19 @@ def build_users(users: ServerUserDataCollection) -> None:
     users.add_users(user2)
 
 
-# user4
-    pfile1 = ServerPolicyFile(file_id = "BFpolicy1", 
-                              path = '/workspaces/INSPORT-refactor/PDF_speriments/LincolnPol1.pdf', # PATHS ARE HARDCODED FOR THE PROTOTYPE!!!
+# user3
+    pfile1 = ServerPolicyFile(file_id = "BJpolicy1", 
+                              path = get_policy_file_path('LincolnPol1.pdf'), 
                               policy_type = 'Term Life', 
                               print_name = 'Lincoln Life 1 (Term)', 
                               carrier = 'Lincoln National Life Insurance Company',
                               format = 'pdf',
                               is_extracted = False,
-                              extracted_file_path = '', # PATHS ARE HARDCODED FOR THE PROTOTYPE!!!
+                              extracted_file_path = get_policy_file_path('LincolnPol1_extracted.txt'),
                               addl_metadata = None  # Optional dictionary for extra information which can also be None
                             )
-    pfile2 = ServerPolicyFile(file_id = "BFpolicy2", 
-                              path = '/workspaces/INSPORT-refactor/PDF_speriments/LincolnPol2.pdf', 
+    pfile2 = ServerPolicyFile(file_id = "BJpolicy2", 
+                              path = get_policy_file_path ('LincolnPol2.pdf'), 
                               policy_type = 'Term Life', 
                               print_name = 'Lincoln Life 2 (Term)', 
                               carrier = 'Lincoln National Life Insurance Company',
@@ -196,40 +208,30 @@ def build_users(users: ServerUserDataCollection) -> None:
                               extracted_file_path = '',
                               addl_metadata = None  # Optional dictionary for extra information which can also be None
                             )
-    pfile3 = ServerPolicyFile(file_id = "BFpolicy3", 
-                                path = '/workspaces/INSPORT-refactor/PDF_speriments/Home_Owners_Policy_1.pdf', 
-                                policy_type = 'Condo Owner', 
-                                print_name = 'Safeco Condo Owner', 
+    pfile3 = ServerPolicyFile(file_id = "BJpolicy3", 
+                                path = get_policy_file_path ('Safeco_Homeowners_Policy.pdf'), 
+                                policy_type = 'Homeowner', 
+                                print_name = 'Safeco Homeowner', 
                                 carrier = 'Safeco',
                                 format = 'pdf',
                                 is_extracted = False,
                                 extracted_file_path = '',
                                 addl_metadata = None  # Optional dictionary for extra information which can also be None
-                                )
-    pfile4 = ServerPolicyFile(file_id = "BFpolicy4", 
-                                path = '/workspaces/INSPORT-refactor/PDF_speriments/Renters_Policy_Nationwide.pdf', 
-                                policy_type = 'Renter', 
-                                print_name = 'Nationwide Renter', 
-                                carrier = 'Nationwide',
-                                format = 'pdf',
-                                is_extracted = False,
-                                extracted_file_path = '',
-                                addl_metadata = None  # Optional dictionary for extra information which can also be None
-                                )
+    )
 
-    pfcollection4 = ServerPolicyCollection()            # This will collect all the ServerPolicyFiles for all of the policies "uploaded" by user1
-    pfcollection4.policies[pfile1.file_id] = pfile1
-    pfcollection4.policies[pfile2.file_id] = pfile2  
-    pfcollection4.policies[pfile3.file_id] = pfile3
-    pfcollection4.policies[pfile4.file_id] = pfile4   
+    pfcollection3 = ServerPolicyCollection()            # This will collect all the ServerPolicyFiles for all of the policies "uploaded" by user1
+    pfcollection3.policies[pfile1.file_id] = pfile1
+    pfcollection3.policies[pfile2.file_id] = pfile2  
+    pfcollection3.policies[pfile3.file_id] = pfile3
 
 
-    user4 = ServerUserData("user4",
-                            "session4",
+
+    user3 = ServerUserData("user3",
+                            "session3",
                             "Beff", 
                             "Jesos",
-                            4, 
-                            pfcollection4 
+                            3, 
+                            pfcollection3 
                           )
-    users.add_users(user4)
+    users.add_users(user3)
 

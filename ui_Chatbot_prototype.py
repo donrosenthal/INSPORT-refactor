@@ -34,7 +34,7 @@ parser.add_argument('--user', type=str, required=True, help='Simulated user to l
 args = parser.parse_args()
 
 # Validate the user argument
-valid_users = ['user0', 'user1', 'user2']
+valid_users = ['user0', 'user1', 'user2', 'user3']
 if args.user not in valid_users:
     print(f"Error: '{args.user}' is not a valid user. Please choose from {', '.join(valid_users)}.")
     sys.exit(1)
