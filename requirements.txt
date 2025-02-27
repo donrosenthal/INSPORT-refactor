@@ -5,7 +5,7 @@
 #langchain-openai
 
 #################################
-# For Gemiini use the following:
+# For Gemini use the following:
 #################################
 google-generativeai
 langchain-google-genai
@@ -18,4 +18,4 @@ python-dotenv==0.19.1
 psutil
 
 grpcio
-google--generativeai
+#google--generativeai
