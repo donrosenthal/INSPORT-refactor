@@ -85,7 +85,7 @@ The code is built to run from VSCode, but as it is containerized it should run f
 
 In VSCode:
 1. In the terminal, navigate to the root directory of the cloned repo.
-2. Use Command (⌘) + Shift + P to open the Command Pallette, and select, "Dev Containers: Rebuild Container Without Cache"
+2. Use Command (⌘) + Shift + P to open the Command Palette, and select, "Dev Containers: Rebuild Container Without Cache"
 3. When that has completed, press any key to close the terminal.
 4. Reopen the terminal in the root directory
 5. Launch the demo with: `python ui_Chatbot_prototype.py --user <user-choice>`, where user choice can be either "user0" or "user2".
