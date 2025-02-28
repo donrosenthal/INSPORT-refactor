@@ -6,7 +6,7 @@ February 2025
 
 The Chatbot POC was originally meant to test the AI capabilities desired for the original Insurance Portal website. That version of the chatbot was conceived as a component of a larger application.
 
-In addition to functions performed by the main application which are not connected to the browser-based Chatbot, it relied on a main application for such standard functions as user login and authentication, long term storage of user data (name, profile, etc.), and the uploading and storage of user's insurance policies. Most importantly, the main application, not the bot, was tasked with converting those policies from .pdf file to a text-based version that was usable by the LLM.
+In addition to functions performed by the main application which are not connected to the browser-based Chatbot, it relied on the main application for such standard functions as user login and authentication, long term storage of user data (name, profile, etc.), and the uploading and storage of user's insurance policies. Most importantly, the main application, not the bot, was tasked with converting those policies from .pdf file to a text-based version that was usable by the LLM.
 
 The chatbot controls user interactions with the LLM, the UI, and the maintenance of session state of the chat through as many focus changes to and from the chatbot as the user initiates. When the chatbot needs user data or the contents of any of their files, it will GET that data through API calls, but will not store any of the retrieved data. The chatbot can also PUT or change some of the user data through API calls.
 
