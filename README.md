@@ -41,7 +41,7 @@ The code was divided up into separate files and directories based on function:
   - Directory where the test policy .pdf files and their converted versions are stored
 - **.devcontainer (subdirectory)**
   - devcontainer.json (defines the Docker container and initializes the Python environment)
-- **.images (subdirectory)
+- **.images (subdirectory)**
   - Contains a screenshot used by the readme.md file -- no code.
 
 
