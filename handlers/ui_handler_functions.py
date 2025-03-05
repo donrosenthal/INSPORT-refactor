@@ -144,7 +144,7 @@ memory = ConversationBufferMemory(return_messages=True) #ConversationBuffer
 # For Gemini, use the following:
 #################################
 model = ChatGoogleGenerativeAI(
-    model="gemini-1.5-pro",
+    model="gemini-1.5-pro-002",
     temperature=0.7,
     convert_messages_to_prompt=False, # We are managing the convo history ourselves, as we do not want it to include the insurancy polcy text, and the policy instructions if/when they are present.
     streaming=True
