@@ -2,10 +2,13 @@ import sys
 import os
 import psutil
 import time
+import logging
 
 from persistent_data.ui_session_data_mgmt import *
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 from server_data.ui_server_side_data import *
+
+from pdf_processor_service.pdf_processor import *
 
 import langchain
 
@@ -14,6 +17,7 @@ from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, H
 from langchain.memory import ConversationBufferMemory
 
 from langchain.globals import set_debug
+
 
 
 #################################
@@ -316,7 +320,7 @@ def get_policy_file_info(session_state: SessionData,
     policy_count = 0    # the set of uploaded policies may have changed since the last focus event
     session_state.policy_list=[] # initialize as empty list
     
-    for policy in server_user.policies:  # Number of policeis uploaded can be 0 
+    for policy in server_user.policies:  # Number of policies uploaded can be 0 
         sesh_policy = Policy() # create a fresh Policy instance
         sesh_policy.file_id = policy.file_id # Unique identifier for the policy file
         sesh_policy.path = policy.path # URL or file path
@@ -396,7 +400,7 @@ def handle_query(user_input: str, session_state: SessionData, user_id: str) -> N
         full_response = ''.join(full_response_chunks)
 
         if not full_response:
-            full_response = "I apologize, but I encountered an error processing your request. CPlease try again?"
+            full_response = "I apologize, but I encountered an error processing your request. Please try again."
 
         memory.save_context({"input": user_input}, {"output": full_response})
 
@@ -432,29 +436,104 @@ def format_history_for_gemini(history):
 def process_pdf_file(policy: Policy, session_state: SessionData):
     '''Create a text file from the pdf file by: 
             1) Converting the .pdf to a text string
-            2) Save the text in a file with the same name but with a .txt extentension
+            2) Save the text in a file with the same name but with a .txt extension
             3) Store the path to the converted file in the session_state
             4) Set is_extracted to True in the session_state
 
     '''
-    file_contents = extract_text_from_pdf_file (policy)
-    txt_file_path = write_text_to_txt_file (file_contents, policy)
+    txt_file_path = create_txt_file_path(policy.path)
+    file_contents = extract_text_from_pdf(policy.path, txt_file_path) # in subdir pdf_processor
+    #txt_file_path = write_text_to_txt_file (file_contents, policy)
     policy.extracted_file_path = txt_file_path
     policy.is_extracted = True
-   
- 
-def extract_text_from_pdf_file(policy: Policy) -> str:
-    try:
-        text_parts = []
-        with pdfplumber.open(policy.path) as pdf:
-            total_pages = len(pdf.pages)
-            for page in pdf.pages:
-                extracted_text = page.extract_text()
-                if extracted_text:  # Guard against None or empty strings
-                    text_parts.append(extracted_text)
-        return "\n\n".join(text_parts)
-    except Exception as e:
-        raise PDFExtractionError(f"Failed to extract text from PDF: {str(e)}")
+
+def extract_text_from_pdf(policy, txt_file_path):
+    # Initialize the service
+    pdf_service = PDFProcessingService(base_temp_dir="processing_tmp")
+
+    # Check dependencies first
+    if not pdf_service.check_dependencies():
+        print("Missing dependencies. Please install required packages.")
+        exit(1)
+
+    # Process a document
+    result = pdf_service.process_document(
+        pdf_path=policy,
+        output_file=txt_file_path,
+        languages=["eng"]
+    )
+
+    # Check result and use the extracted text
+    if result["success"]:
+        print(f"Document processed successfully as {result['document_type']}")
+        print(f"Text available at: {result['text_file_path']}")
+        
+    else:
+        print(f"Processing failed: {result['error']}")
+
+    # Optional: Clean up temporary files when done
+    if "job_id" in result:
+        pdf_service.cleanup_job(result["job_id"])
+
+#####################################################################
+# Deprecated by PDFProcessingService
+#####################################################################
+# def extract_text_from_pdf_file(policy: Policy) -> str:
+#     try:
+#         text_parts = []
+#         with pdfplumber.open(policy.path) as pdf:
+#             total_pages = len(pdf.pages)
+#             for page in pdf.pages:
+#                 extracted_text = page.extract_text()
+#                 if extracted_text:  # Guard against None or empty strings
+#                     text_parts.append(extracted_text)
+#         return "\n\n".join(text_parts)
+#     except Exception as e:
+#         raise PDFExtractionError(f"Failed to extract text from PDF: {str(e)}")
+
+
+
+# def extract_text_from_pdf_file(policy) -> str:
+#     """
+#     Extracts text from a PDF file, handling both text-based and scanned PDFs.
+#     First tries to extract text directly, falls back to OCR if needed.
+#     """
+#     try:
+#         # First try direct text extraction with pdfplumber
+#         #pagenum = 0;
+#         text_parts = []
+#         #print(f'Path: {policy.path}')
+#         with pdfplumber.open(policy.path) as pdf:
+#             for page in pdf.pages:
+#                 #pagenum += 1
+#                 #print(f'attempting text extract for page {pagenum}')
+#                 extracted_text = page.extract_text()
+#                 if extracted_text:  # Non-empty text
+#                     text_parts.append(extracted_text)
+        
+#         # If we got meaningful text, return it
+#         if text_parts and len("\n\n".join(text_parts).strip()) > 100:
+#             print(f"Successfully extracted text directly from {policy.path}")
+#             return "\n\n".join(text_parts)
+        
+#         # Otherwise, fall back to OCR
+#         print(f"Falling back to OCR for {policy.path}")
+#         import pytesseract
+#         from pdf2image import convert_from_path
+        
+#         images = convert_from_path(policy.path)
+#         ocr_text_parts = []
+#         for i, image in enumerate(images):
+#             print(f"Processing page {i+1} with OCR")
+#             text = pytesseract.image_to_string(image)
+#             ocr_text_parts.append(text)
+        
+#         return "\n\n".join(ocr_text_parts)
+        
+#     except Exception as e:
+#         raise PDFExtractionError(f"Failed to extract text from PDF {policy.path}: {str(e)}")
+
+
 
 
 def write_text_to_txt_file (file_contents: str, policy: Policy) -> str:

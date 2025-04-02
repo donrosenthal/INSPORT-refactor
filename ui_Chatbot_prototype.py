@@ -30,7 +30,7 @@ global session_state
 
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description='Start the Insurance Portal Chat Demo')
-parser.add_argument('--user', type=str, required=True, help='Simulated user to load (user0, user1, or user2)')
+parser.add_argument('--user', type=str, required=True, help='Simulated user to load (user0, user1, user2, or user3)')
 args = parser.parse_args()
 
 # Validate the user argument
@@ -160,6 +160,7 @@ class MyHandler(http.server.SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     PORT = 8000
+    
 
     server_user_data = create_server_user_data() 
     # The above data is dynamic, so needs to gathered evry time the focus returns to the Chatbot. 

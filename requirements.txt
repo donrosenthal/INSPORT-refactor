@@ -7,14 +7,27 @@
 #################################
 # For Gemini use the following:
 #################################
+# Google AI ecosystem
 google-generativeai
 langchain-google-genai
 
+# LangChain components
 langchain
 langchain-community
 langsmith
-pdfplumber
+
+# Environment utilities
 python-dotenv==0.19.1
 psutil
-
 grpcio
+
+# PDF processing libraries
+pdfplumber>=0.7.0
+pytesseract>=0.3.9
+pdf2image>=1.16.0
+Pillow>=9.0.0
+numpy>=1.22.0
+
+PyMuPDF>=1.18.0
+tqdm>=4.64.0
+

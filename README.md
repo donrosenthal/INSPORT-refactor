@@ -2,6 +2,17 @@
 Don Rosenthal  
 February 2025
 
+## Running with VS Code
+1. Open the folder in VS Code
+2. Click "Reopen in Container" when prompted
+3. VS Code will build and start the development environment
+
+## Running without VS Code
+1. Be sure to uncomment and update the final COPY and CMD instructions in Dockerfile if they are not already.
+2.Build the container: `docker build -t insport-app .`
+3. Run the container: `docker run -it -v $(pwd):/app insport-app`
+
+
 ## Background
 
 The Chatbot POC was originally meant to test the AI capabilities desired for the original Insurance Portal website. That version of the chatbot was conceived as a component of a larger application.

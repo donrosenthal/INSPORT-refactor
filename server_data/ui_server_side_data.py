@@ -116,18 +116,10 @@ def create_server_user_data() -> ServerUserDataCollection:
 def build_users(users: ServerUserDataCollection) -> None:
     #setup each user and their polices and add them to users, a ServerUserDataCollection object
 
-    # user0
-    user0 = ServerUserData("user0",
-                            "session1",
-                            "Gill", 
-                            "Bates",
-                            0, 
-                            {}
-                          )
-    users.add_users(user0)
-    
-    # user1
-    pfile1 = ServerPolicyFile(file_id = "ZMpolicy1", 
+
+
+    # policy files
+    pfile1 = ServerPolicyFile(file_id = "policy1", 
                               path = get_policy_file_path('LincolnPol1.pdf'),
                               policy_type = 'Term Life', 
                               print_name = 'Lincoln Life (Term)', 
@@ -137,6 +129,43 @@ def build_users(users: ServerUserDataCollection) -> None:
                               extracted_file_path =  get_policy_file_path('LincolnPol1_extracted.txt'), 
                               addl_metadata = None  # Optional dictionary for extra information which can also be None
                             )
+
+    pfile2 = ServerPolicyFile(file_id = "policy2", 
+                              path = get_policy_file_path ('LincolnPol2.pdf'), 
+                              policy_type = 'Term Life', 
+                              print_name = 'Lincoln Life 2 (Term)', 
+                              carrier = 'Lincoln National Life Insurance Company',
+                              format = 'pdf',
+                              is_extracted = False,
+                              extracted_file_path = '',
+                              addl_metadata = None  # Optional dictionary for extra information which can also be None
+                            )
+    pfile3 = ServerPolicyFile(file_id = "policy3", 
+                                path = get_policy_file_path ('Condo_Policy_1.pdf'), 
+                                policy_type = 'Condo', 
+                                print_name = 'Safeco Condo', 
+                                carrier = 'Safeco',
+                                format = 'pdf',
+                                is_extracted = False,
+                                extracted_file_path = '',
+                                addl_metadata = None  # Optional dictionary for extra information which can also be None
+    )
+    
+    #####################################
+    # User "profiles"
+    ##################################### 
+
+    # user0
+    user0 = ServerUserData("user0",
+                            "session1",
+                            "Gill", 
+                            "Bates",
+                            0, 
+                            {}
+                          )
+    users.add_users(user0)
+   
+    # user1
 
     pfcollection1 = ServerPolicyCollection()            # This will collect all the ServerPolicyFiles for all of the policies "uploaded" by user1
     pfcollection1.policies[pfile1.file_id] = pfile1     
@@ -151,28 +180,8 @@ def build_users(users: ServerUserDataCollection) -> None:
     users.add_users(user1)
 
 # user2
-    pfile1 = ServerPolicyFile(file_id = "JSpolicy1", 
-                              path = get_policy_file_path('LincolnPol1.pdf'),
-                              policy_type = 'Term Life', 
-                              print_name = 'Lincoln Life 1 (Term)', 
-                              carrier = 'Lincoln National Life Insurance Company',
-                              format = 'pdf',
-                              is_extracted = True,
-                              extracted_file_path =  get_policy_file_path('LincolnPol1_extracted.txt'), 
-                              addl_metadata = None  # Optional dictionary for extra information which can also be None
-                            )
-    pfile2 = ServerPolicyFile(file_id = "JSpolicy2", 
-                              path =  get_policy_file_path('LincolnPol2.pdf'), 
-                              policy_type = 'Term Life', 
-                              print_name = 'Lincoln Life 2 (Term)', 
-                              carrier = 'Lincoln National Life Insurance Company',
-                              format = 'pdf',
-                              is_extracted = False,
-                              extracted_file_path = '',
-                              addl_metadata = None  # Optional dictionary for extra information which can also be None
-                            )
-
-    pfcollection2 = ServerPolicyCollection()            # This will collect all the ServerPolicyFiles for all of the policies "uploaded" by user1
+    
+    pfcollection2 = ServerPolicyCollection()            # This will collect all the ServerPolicyFiles for all of the policies "uploaded" by user2
     pfcollection2.policies[pfile1.file_id] = pfile1
     pfcollection2.policies[pfile2.file_id] = pfile2   
 
@@ -188,43 +197,11 @@ def build_users(users: ServerUserDataCollection) -> None:
 
 
 # user3
-    pfile1 = ServerPolicyFile(file_id = "BJpolicy1", 
-                              path = get_policy_file_path('LincolnPol1.pdf'), 
-                              policy_type = 'Term Life', 
-                              print_name = 'Lincoln Life 1 (Term)', 
-                              carrier = 'Lincoln National Life Insurance Company',
-                              format = 'pdf',
-                              is_extracted = False,
-                              extracted_file_path = get_policy_file_path('LincolnPol1_extracted.txt'),
-                              addl_metadata = None  # Optional dictionary for extra information which can also be None
-                            )
-    pfile2 = ServerPolicyFile(file_id = "BJpolicy2", 
-                              path = get_policy_file_path ('LincolnPol2.pdf'), 
-                              policy_type = 'Term Life', 
-                              print_name = 'Lincoln Life 2 (Term)', 
-                              carrier = 'Lincoln National Life Insurance Company',
-                              format = 'pdf',
-                              is_extracted = False,
-                              extracted_file_path = '',
-                              addl_metadata = None  # Optional dictionary for extra information which can also be None
-                            )
-    pfile3 = ServerPolicyFile(file_id = "BJpolicy3", 
-                                path = get_policy_file_path ('Safeco_Homeowners_Policy.pdf'), 
-                                policy_type = 'Homeowner', 
-                                print_name = 'Safeco Homeowner', 
-                                carrier = 'Safeco',
-                                format = 'pdf',
-                                is_extracted = False,
-                                extracted_file_path = '',
-                                addl_metadata = None  # Optional dictionary for extra information which can also be None
-    )
-
-    pfcollection3 = ServerPolicyCollection()            # This will collect all the ServerPolicyFiles for all of the policies "uploaded" by user1
+    
+    pfcollection3 = ServerPolicyCollection()            # This will collect all the ServerPolicyFiles for all of the policies "uploaded" by user3
     pfcollection3.policies[pfile1.file_id] = pfile1
     pfcollection3.policies[pfile2.file_id] = pfile2  
     pfcollection3.policies[pfile3.file_id] = pfile3
-
-
 
     user3 = ServerUserData("user3",
                             "session3",

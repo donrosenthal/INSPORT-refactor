@@ -2,6 +2,7 @@ langchain_debug_log
 rate_limit_and_quota_tests/
 .vscode/ 
 .vscode/launch.json
+caching_tests.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
