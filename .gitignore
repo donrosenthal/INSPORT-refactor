@@ -3,6 +3,7 @@ rate_limit_and_quota_tests/
 .vscode/ 
 .vscode/launch.json
 caching_tests.py
+pdf_processor/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
