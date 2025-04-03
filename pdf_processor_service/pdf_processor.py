@@ -3,6 +3,10 @@ import uuid
 import fitz  # PyMuPDF
 import subprocess
 from tqdm import tqdm
+import tempfile
+import shutil
+import atexit
+from contextlib import contextmanager
 
 class PDFProcessingService:
     """
@@ -16,16 +20,31 @@ class PDFProcessingService:
     - File management
     """
     
-    def __init__(self, base_temp_dir="pdf_processing_tmp"):
+    def __init__(self, base_temp_dir=None):
         """
         Initialize the PDF processing service.
         
         Args:
             base_temp_dir (str): Base directory for temporary processing files
         """
-        self.base_temp_dir = base_temp_dir
-        os.makedirs(base_temp_dir, exist_ok=True)
-    
+        if base_temp_dir is None:
+            self.base_temp_dir = tempfile.mkdtemp(prefix="pdf_processing_")
+        else:
+            self.base_temp_dir = base_temp_dir
+            os.makedirs(base_temp_dir, exist_ok=True)
+        atexit.register(self.cleanup_base_dir)
+
+    @contextmanager
+    def _job_directory(self):
+        """
+        Context manager for creating and cleaning up job directories.
+        """
+        job_dir = tempfile.mkdtemp(dir=self.base_temp_dir, prefix="job_")
+        try:
+            yield job_dir
+        finally:
+            shutil.rmtree(job_dir, ignore_errors=True)
+
     def process_document(self, pdf_path, output_file=None, languages=["eng"]):
         """
         Process a PDF document and extract its text content.
@@ -44,51 +63,48 @@ class PDFProcessingService:
                 - document_type (str): Type of document detected
                 - error (str, optional): Error message if processing failed
         """
-        # Create unique job ID and directories
         job_id = str(uuid.uuid4())
-        job_dir = os.path.join(self.base_temp_dir, job_id)
-        os.makedirs(job_dir, exist_ok=True)
-        
-        # If no output file specified, create one in the job directory
-        if output_file is None:
-            output_file = os.path.join(job_dir, "extracted_text.txt")
-        
-        try:
-            print(f"🔍 Processing PDF: {pdf_path}")
+        with self._job_directory() as job_dir:
+            # If no output file specified, create one in the job directory
+            if output_file is None:
+                output_file = os.path.join(job_dir, "extracted_text.txt")
             
-            # Detect document type
-            if self._is_scanned_pdf(pdf_path):
-                document_type = "scanned"
-                text_file_path = self._process_scanned_pdf(
-                    pdf_path, output_file, job_dir, languages
-                )
-            else:
-                # Check if it has annotations
-                has_annotations = self._has_annotations(pdf_path)
-                document_type = "digital_with_annotations" if has_annotations else "digital"
+            try:
+                print(f"🔍 Processing PDF: {pdf_path}")
                 
-                text_file_path = self._process_digital_pdf(
-                    pdf_path, output_file, has_annotations
-                )
-            
-            print(f"✅ Document processed successfully. Text saved to: {text_file_path}")
-            print(f'Document type is {document_type}')
-            
-            return {
-                "success": True,
-                "job_id": job_id,
-                "text_file_path": text_file_path,
-                "document_type": document_type
-            }
-            
-        except Exception as e:
-            print(f"❌ Error processing PDF: {str(e)}")
-            return {
-                "success": False,
-                "job_id": job_id,
-                "error": str(e),
-                "document_type": "unknown"
-            }
+                # Detect document type
+                if self._is_scanned_pdf(pdf_path):
+                    document_type = "scanned"
+                    text_file_path = self._process_scanned_pdf(
+                        pdf_path, output_file, job_dir, languages
+                    )
+                else:
+                    # Check if it has annotations
+                    has_annotations = self._has_annotations(pdf_path)
+                    document_type = "digital_with_annotations" if has_annotations else "digital"
+                    
+                    text_file_path = self._process_digital_pdf(
+                        pdf_path, output_file, has_annotations
+                    )
+                
+                print(f"✅ Document processed successfully. Text saved to: {text_file_path}")
+                print(f'Document type is {document_type}')
+                
+                return {
+                    "success": True,
+                    "job_id": job_id,
+                    "text_file_path": text_file_path,
+                    "document_type": document_type
+                }
+                
+            except Exception as e:
+                print(f"❌ Error processing PDF: {str(e)}")
+                return {
+                    "success": False,
+                    "job_id": job_id,
+                    "error": str(e),
+                    "document_type": "unknown"
+                }
     
     def _is_scanned_pdf(self, pdf_path, max_pages=5, min_chars_per_page=50):
         """
@@ -373,16 +389,25 @@ class PDFProcessingService:
         Returns:
             bool: True if cleanup was successful, False otherwise
         """
-        job_dir = os.path.join(self.base_temp_dir, job_id)
+        job_dir = os.path.join(self.base_temp_dir, f"job_{job_id}")
         if os.path.exists(job_dir):
             try:
-                import shutil
                 shutil.rmtree(job_dir)
                 return True
             except Exception as e:
                 print(f"Error cleaning up job directory: {e}")
                 return False
         return False
+    
+    def cleanup_base_dir(self):
+        """
+        Clean up the base temporary directory.
+        """
+        if os.path.exists(self.base_temp_dir):
+            try:
+                shutil.rmtree(self.base_temp_dir)
+            except Exception as e:
+                print(f"Error cleaning up base directory: {e}")
     
     def get_pdf_info(self, pdf_path):
         """
